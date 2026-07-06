@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="google-site-verification" content="qoel4t5Ie_BTvUGvI7jfG8QVNB1Z7A3Y-8xicxSawDA" />
 <title>Drive Hub — cloud drives</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -405,7 +406,7 @@ footer { margin-top: 56px; padding-top: 20px; border-top: 2px solid var(--border
 
   <div class="grid" id="grid"></div>
 
-  <footer>drive-hub · drive links saved in this browser only (localStorage) · sign-in verified against Firestore</footer>
+  <footer>drive-hub · drive links synced to your account via Firestore · sign-in verified against Firestore</footer>
 </div>
 
 <div class="overlay" id="overlay">
@@ -593,10 +594,12 @@ async function hashAnswer(answer, salt) { return sha256Hex(`${salt}:ans:${answer
 function setAuthed(email) {
   localStorage.setItem(AUTH_KEY, JSON.stringify({ email, ts: Date.now() }));
   document.body.classList.add("authed");
+  if (typeof initDrivesForUser === "function") initDrivesForUser(email);
 }
 function clearAuthed() {
   localStorage.removeItem(AUTH_KEY);
   document.body.classList.remove("authed");
+  if (typeof stopDrivesSync === "function") stopDrivesSync();
   setMode("login");
 }
 function currentEmail() {
@@ -769,7 +772,6 @@ changePasswordForm.addEventListener("submit", async (e) => {
 
 
 <script>
-const STORAGE_KEY = "drive-hub-links";
 
 const SECURITY_INFO = {
   "Google Drive": { level: "mid", encryption: "Encrypted in transit & at rest — Google holds the keys", jurisdiction: "United States", note: "Not end-to-end encrypted by default. Google can technically access file content (e.g. for abuse scanning) and must comply with US legal requests." },
@@ -845,12 +847,51 @@ const KNOWN_SERVICES = [
   { name: "Yandex Disk", url: "https://disk.yandex.com", privacy: "https://yandex.com/legal/confidential/", category: "Other" }
 ];
 
-function loadDrives() { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { try { return JSON.parse(raw); } catch {} } localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DRIVES)); return DEFAULT_DRIVES.slice(); }
-function saveDrives(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
 function faviconUrl(u) { try { const h = new URL(u).hostname; return `https://www.google.com/s2/favicons?domain=${h}&sz=64`; } catch { return ""; } }
 function normalizeUrl(u) { if (!/^https?:\/\//i.test(u)) return "https://" + u; return u; }
 
-let drives = loadDrives(), query = "";
+// ---- Cross-device drive sync (Firestore, per-account, realtime) ----
+// Drive links now live at  driveLinks/{email}  instead of localStorage, so
+// logging into the same DriveHub account on any device shows the same list —
+// and a realtime listener means changes made on one device appear on other
+// open devices/tabs without needing a refresh.
+let drives = [], query = "";
+let unsubscribeDrives = null;
+
+function driveLinksRef(email) { return db.collection("driveLinks").doc(email); }
+
+function initDrivesForUser(email) {
+  if (unsubscribeDrives) { unsubscribeDrives(); unsubscribeDrives = null; }
+  unsubscribeDrives = driveLinksRef(email).onSnapshot(
+    (doc) => {
+      if (doc.exists && Array.isArray(doc.data().drives)) {
+        drives = doc.data().drives;
+      } else {
+        drives = DEFAULT_DRIVES.slice();
+        driveLinksRef(email).set({ drives, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }
+      render();
+    },
+    (err) => { console.error("Drive sync error:", err); }
+  );
+}
+
+function stopDrivesSync() {
+  if (unsubscribeDrives) { unsubscribeDrives(); unsubscribeDrives = null; }
+  drives = [];
+  render();
+}
+
+async function persistDrives() {
+  const email = currentEmail();
+  if (!email) return;
+  try {
+    await driveLinksRef(email).set({ drives, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  } catch (err) {
+    console.error("Failed to sync drives to Firestore:", err);
+  }
+}
+
 const WARNING_KEY = "drive-hub-warning-dismissed";
 const warningBanner = document.getElementById("warning-banner");
 if (localStorage.getItem(WARNING_KEY) === "1") warningBanner.style.display = "none";
@@ -873,7 +914,7 @@ function render() {
       card.title = d.name;
       card.style.setProperty("--tile-color", color);
       card.innerHTML = `<button class="card-remove" title="Remove" data-idx="${i}">✕</button>${d.privacy ? `<a class="card-privacy" href="${d.privacy}" target="_blank" rel="noopener" title="View ${d.name}'s privacy policy" onclick="event.stopPropagation()">🛈</a>` : ""}<div class="card-icon"><img src="${faviconUrl(d.url)}" alt="${d.name}" onerror="this.style.display='none'"/></div><div class="card-label">${d.name}</div>`;
-      card.querySelector(".card-remove").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); card.classList.add("removing"); setTimeout(() => { drives.splice(i, 1); saveDrives(drives); render(); }, 180); });
+      card.querySelector(".card-remove").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); card.classList.add("removing"); setTimeout(() => { drives.splice(i, 1); persistDrives(); render(); }, 180); });
       grid.appendChild(card);
     });
   }
@@ -930,12 +971,12 @@ document.getElementById("save-btn").addEventListener("click", () => {
   let name, url, privacy = null;
   if (selectInput.value === "__custom__") { name = nameInput.value.trim(); url = urlInput.value.trim(); if (!name || !url) return; url = normalizeUrl(url); } else { const service = KNOWN_SERVICES.find((s) => s.name === selectInput.value); if (!service) return; name = service.name; url = service.url; privacy = service.privacy || null; }
   drives.push({ name, url, privacy });
-  saveDrives(drives);
+  persistDrives();
   closeModal();
   render();
 });
 
-render();
+if (currentEmail()) { initDrivesForUser(currentEmail()); } else { render(); }
 
 const THEME_KEY = "drive-hub-theme", themeToggle = document.getElementById("theme-toggle");
 function applyTheme(t) { if (t === "dark") { document.documentElement.setAttribute("data-theme", "dark"); themeToggle.textContent = "☀️"; } else { document.documentElement.removeAttribute("data-theme"); themeToggle.textContent = "🌙"; } }
