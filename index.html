@@ -664,16 +664,44 @@ Freelance, 15000</div>
 
     <div class="import-grid">
       <div class="import-card full">
-        <h3>Connect your Firestore project</h3>
+        <h3>Your Identity — sync by phone number</h3>
+        <div class="ic-note">
+          Verify your phone once and it becomes your automatic sync identity — no key to invent, remember, or share. The Firebase config below is already pre-filled in this file, so on a new device this is the <b>only step</b> you need: verify with the <b>same number</b> and it finds this same data there.
+        </div>
+
+        <div id="identityVerified" style="display:none;">
+          <div class="imp-status ok" id="identitySignedInAs" style="margin-bottom:10px;"></div>
+          <button class="btn ghost" onclick="signOutIdentity()">Use a different number</button>
+        </div>
+
+        <div id="identityUnverified">
+          <div id="identityStep1">
+            <input class="imp-select-text" id="identityPhone" type="tel" placeholder="+91 98765 43210">
+            <div class="imp-row">
+              <button class="btn" onclick="sendIdentityOtp()">Send OTP</button>
+            </div>
+          </div>
+          <div id="identityStep2" style="display:none;">
+            <input class="imp-select-text" id="identityOtp" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code">
+            <div class="imp-row">
+              <button class="btn" onclick="verifyIdentityOtp()">Verify</button>
+              <button class="btn-cancel" onclick="backToIdentityPhoneStep()">Use a different number</button>
+            </div>
+          </div>
+          <div class="imp-status" id="identityStatus"></div>
+        </div>
+      </div>
+
+      <div class="import-card full">
+        <h3>Firebase project <span class="mono" style="color:var(--dim); font-weight:400; font-size:0.72rem">· pre-filled — only edit if using a different project</span></h3>
         <ol class="steps">
-          <li>Create a free project at <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a> and enable <b>Firestore Database</b>.</li>
-          <li>In Project Settings → General, add a Web App and copy the <code>firebaseConfig</code> object.</li>
-          <li>Paste it below, pick a <b>Sync Key</b> (any private word — it's the document ID your data lives under), then Connect.</li>
-          <li>Use the same config + Sync Key on another device to see the same data there.</li>
+          <li>This config is already filled in below for this file's Firebase project — you don't need to touch it unless you're switching to a different project entirely.</li>
+          <li>To connect: verify your identity above (recommended), or type your own <b>Sync Key</b> below, then hit Connect.</li>
+          <li>On a new device, opening this same file already has the config ready — just verify your identity again there.</li>
         </ol>
-        <span class="field-label">Firebase config (paste the object from the console)</span>
+        <span class="field-label">Firebase config <span class="mono" style="color:var(--dim); text-transform:none; letter-spacing:0;">(pre-filled from this file — edit only for a different project)</span></span>
         <textarea class="imp-text" id="fbConfig" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..."}'></textarea>
-        <span class="field-label">Sync key</span>
+        <span class="field-label">Sync key <span class="mono" style="color:var(--dim); text-transform:none; letter-spacing:0;">— auto-filled once you verify your identity above, or set your own</span></span>
         <input class="imp-select-text" id="fbSyncKey" placeholder="e.g. my-household-2026">
         <div class="imp-row">
           <button class="btn" onclick="connectCloud()">Connect</button>
@@ -681,7 +709,7 @@ Freelance, 15000</div>
         </div>
         <div class="imp-status" id="cloudConnectStatus"></div>
         <div class="callout">
-          Firestore's client config isn't a secret, but your data still needs protecting. In Firestore → Rules, restrict access so only requests with your Sync Key can read/write, rather than leaving rules fully open — otherwise anyone with your project ID could reach your document.
+          Firestore's client config isn't a secret, but your data still needs protecting. Verifying your identity above lets you use real per-user Firestore rules (only your signed-in phone number can read/write your document) — see the updated rules example below. If you skip identity verification and type a Sync Key manually instead, that key becomes your only protection, so keep it obscure.
         </div>
       </div>
 
@@ -737,7 +765,19 @@ Freelance, 15000</div>
   }
 }</div>
         <div class="callout">
-          These rules are intentionally minimal-friction for a personal setup — an obscure Sync Key is your main protection. For stronger security later, look into Firestore App Check or a custom auth token check in the rules.
+          These rules are intentionally minimal-friction for a personal setup — an obscure Sync Key is your main protection. <b>If you verified your Identity above</b> (recommended), use this tighter version instead, which locks the main document to only your signed-in phone number:
+        </div>
+        <div class="csv-example" style="white-space:pre; font-size:0.7rem; margin-top:8px;">match /databases/{db}/documents {
+  match /ledgerApp/{syncKey} {
+    allow read, write: if request.auth != null && request.auth.uid == syncKey;
+  }
+  match /ledgerApp/{syncKey}/inbox/{docId} {
+    allow create: if request.resource.data.keys().hasAll(['raw','amount','type','createdAt']);
+    allow read, delete: if true;
+  }
+}</div>
+        <div class="callout">
+          Note the <code>inbox</code> subcollection stays open either way — the iPhone Shortcut posts to it directly over plain HTTP with no Firebase sign-in, so it can't satisfy an <code>auth != null</code> check. Its real protection is that your Sync Key (or identity ID) in the URL is a long, unguessable string, not something enforced by the rules themselves.
         </div>
 
         <span class="field-label">Recent auto-captured transactions</span>
@@ -787,6 +827,18 @@ const storageShim = {
     const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
     return { keys, prefix, shared: !!shared };
   }
+};
+
+// Pre-filled so a new device doesn't need the config re-pasted — Firebase's client config
+// isn't a secret (it's just project identifiers); real protection is your Firestore rules
+// plus verifying your identity. Edit this only if you switch to a different Firebase project.
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDltK1_c9oUf3LCENkmIlJGzgWNOyUV1UA",
+  authDomain: "myapp-a3c22.firebaseapp.com",
+  projectId: "myapp-a3c22",
+  storageBucket: "myapp-a3c22.firebasestorage.app",
+  messagingSenderId: "259866865688",
+  appId: "1:259866865688:web:6208764a22480bcc7c936d"
 };
 
 const STORE_KEY = 'ledger-finance-v2';
@@ -886,7 +938,8 @@ async function load(){
   updateModeUI();
   render();
   renderInboxLog();
-  if(currentMode === 'real'){ await restoreCloudSettings(); }
+  document.getElementById('fbConfig').value = JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
+  if(currentMode === 'real'){ await restoreIdentity(); await restoreCloudSettings(); }
 }
 async function save(){
   try{ await storageShim.set(storeKeyForMode(currentMode), JSON.stringify(data), false); }
@@ -1755,6 +1808,84 @@ function backToPhoneStep(){
   document.getElementById('lockStep2').style.display = 'none';
   document.getElementById('lockStatus').textContent = '';
 }
+
+// ---- Identity (phone number as automatic sync key) ----
+async function sendIdentityOtp(){
+  const status = document.getElementById('identityStatus');
+  const phone = document.getElementById('identityPhone').value.trim();
+  if(!phone){ status.className='imp-status err'; status.textContent='Enter your mobile number, including country code (e.g. +91...).'; return; }
+  const cfgText = document.getElementById('fbConfig').value.trim();
+  if(!cfgText){ status.className='imp-status err'; status.textContent='Paste your Firebase config below first.'; return; }
+  let cfgObj;
+  try{ cfgObj = parseLenientConfig(cfgText); }catch(e){ status.className='imp-status err'; status.textContent='Could not read your Firebase config.'; return; }
+  try{
+    await window.__auth.init(cfgObj);
+    await window.__auth.sendOtp(phone);
+    document.getElementById('identityStep1').style.display = 'none';
+    document.getElementById('identityStep2').style.display = 'block';
+    status.className = 'imp-status ok';
+    status.textContent = 'Code sent — check your SMS.';
+  }catch(e){
+    status.className = 'imp-status err';
+    status.textContent = 'Could not send OTP: ' + (e.message || 'unknown error');
+  }
+}
+async function verifyIdentityOtp(){
+  const status = document.getElementById('identityStatus');
+  const code = document.getElementById('identityOtp').value.trim();
+  if(!code){ status.className='imp-status err'; status.textContent='Enter the code you received.'; return; }
+  try{
+    const uid = await window.__auth.verifyOtp(code);
+    if(uid){
+      const phone = document.getElementById('identityPhone').value.trim();
+      await storageShim.set('ledger-identity-uid', uid, false);
+      await storageShim.set('ledger-identity-phone', phone, false);
+      document.getElementById('fbSyncKey').value = uid;
+      showIdentityVerified(uid, phone);
+      status.className = 'imp-status ok';
+      status.textContent = 'Verified.';
+      const cfgText = document.getElementById('fbConfig').value.trim();
+      if(cfgText){ await connectCloud(true); }
+    }
+  }catch(e){
+    status.className = 'imp-status err';
+    status.textContent = 'Invalid code: ' + (e.message || 'please try again');
+  }
+}
+function showIdentityVerified(uid, phone){
+  document.getElementById('identityUnverified').style.display = 'none';
+  document.getElementById('identityVerified').style.display = 'block';
+  document.getElementById('identitySignedInAs').textContent =
+    'Signed in' + (phone ? (' as ' + phone) : '') + ' · sync identity: ' + uid.slice(0, 8) + '…';
+}
+async function signOutIdentity(){
+  try{ await window.__auth.signOut(); }catch(e){}
+  try{ await storageShim.delete('ledger-identity-uid', false); }catch(e){}
+  try{ await storageShim.delete('ledger-identity-phone', false); }catch(e){}
+  document.getElementById('identityVerified').style.display = 'none';
+  document.getElementById('identityUnverified').style.display = 'block';
+  document.getElementById('identityStep1').style.display = 'block';
+  document.getElementById('identityStep2').style.display = 'none';
+  document.getElementById('identityPhone').value = '';
+  document.getElementById('identityOtp').value = '';
+  document.getElementById('identityStatus').textContent = '';
+}
+async function restoreIdentity(){
+  try{
+    const u = await storageShim.get('ledger-identity-uid', false);
+    if(u && u.value){
+      const p = await storageShim.get('ledger-identity-phone', false).catch(()=>null);
+      document.getElementById('fbSyncKey').value = u.value;
+      showIdentityVerified(u.value, p ? p.value : '');
+    }
+  }catch(e){}
+}
+function backToIdentityPhoneStep(){
+  document.getElementById('identityStep1').style.display = 'block';
+  document.getElementById('identityStep2').style.display = 'none';
+  document.getElementById('identityStatus').textContent = '';
+}
+
 async function lockNow(){
   let enabled = false;
   try{ const e = await storageShim.get('ledger-security-enabled', false); enabled = !!(e && e.value === 'true'); }catch(err){}
@@ -1771,6 +1902,9 @@ async function lockNow(){
 function parseLenientConfig(text){
   let t = (text||'').trim();
   t = t.replace(/^\s*(export\s+)?(const|let|var)\s+\w+\s*=\s*/,'').replace(/;\s*$/,'');
+  t = t.trim();
+  if(!t.startsWith('{')) t = '{' + t;
+  if(!t.endsWith('}')) t = t + '}';
   try{ return JSON.parse(t); }catch(e){}
   return Function('"use strict"; return (' + t + ')')();
 }
@@ -2112,14 +2246,28 @@ setTimeout(__loadOnce, 2500); // fallback if the Firebase module can't load (e.g
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  let fbApp = null, fbDb = null, fbDocRef = null, unsub = null, inboxUnsub = null, currentSyncKey = null;
-  let authApp = null, authInstance = null, recaptchaVerifier = null, confirmationResult = null;
+  let sharedApp = null, sharedAppConfigKey = null;
+  let fbDb = null, fbDocRef = null, unsub = null, inboxUnsub = null, currentSyncKey = null;
+  let authInstance = null, recaptchaVerifier = null, confirmationResult = null;
+
+  // Auth and Firestore share ONE Firebase app instance, so Firestore requests
+  // carry the signed-in user's ID token — required for uid-based security rules.
+  async function getOrInitApp(configObj){
+    const key = JSON.stringify(configObj);
+    if(sharedApp && sharedAppConfigKey === key) return sharedApp;
+    if(sharedApp){
+      try{ if(unsub) unsub(); if(inboxUnsub) inboxUnsub(); await deleteApp(sharedApp); }catch(e){}
+      sharedApp = null;
+    }
+    sharedApp = initializeApp(configObj, 'ledger-shared');
+    sharedAppConfigKey = key;
+    return sharedApp;
+  }
 
   window.__fb = {
     async connect(configObj, syncKey){
-      if(fbApp){ try{ if(unsub) unsub(); if(inboxUnsub) inboxUnsub(); await deleteApp(fbApp); }catch(e){} }
-      fbApp = initializeApp(configObj, 'ledger-'+Date.now());
-      fbDb = getFirestore(fbApp);
+      const app = await getOrInitApp(configObj);
+      fbDb = getFirestore(app);
       fbDocRef = doc(fbDb, 'ledgerApp', syncKey);
       currentSyncKey = syncKey;
       // touch the doc to confirm config/permissions work
@@ -2166,10 +2314,8 @@ setTimeout(__loadOnce, 2500); // fallback if the Firebase module can't load (e.g
 
   window.__auth = {
     async init(configObj){
-      if(!authApp){
-        authApp = initializeApp(configObj, 'ledger-auth-'+Date.now());
-        authInstance = getAuth(authApp);
-      }
+      const app = await getOrInitApp(configObj);
+      authInstance = getAuth(app);
       return true;
     },
     async sendOtp(phoneNumber){
@@ -2183,7 +2329,10 @@ setTimeout(__loadOnce, 2500); // fallback if the Firebase module can't load (e.g
     async verifyOtp(code){
       if(!confirmationResult) throw new Error('Request an OTP first.');
       const result = await confirmationResult.confirm(code);
-      return !!(result && result.user);
+      return (result && result.user) ? result.user.uid : null;
+    },
+    currentUid(){
+      return (authInstance && authInstance.currentUser) ? authInstance.currentUser.uid : null;
     },
     async signOut(){
       if(authInstance) await signOut(authInstance);
