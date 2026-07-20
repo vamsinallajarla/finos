@@ -138,6 +138,50 @@
   .page.active{display:block;}
 
   .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:28px;}
+  .chart-grid{grid-template-columns:1fr 1fr;}
+
+  /* ---- Mobile (iPhone 13 and similar, <=640px) ---- */
+  .mobile-menu-btn{display:none;}
+  .sidebar-backdrop{display:none;}
+  @media (max-width:640px){
+    .app-shell{display:block;}
+    .sidebar{
+      position:fixed;top:0;left:0;height:100vh;width:230px;
+      transform:translateX(-100%);transition:transform .25s ease;z-index:50;
+      box-shadow:4px 0 24px rgba(0,0,0,0.3);
+    }
+    .sidebar.open{transform:translateX(0);}
+    .sidebar-backdrop{
+      display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+      z-index:40;opacity:0;pointer-events:none;transition:opacity .2s ease;
+    }
+    .sidebar-backdrop.visible{opacity:1;pointer-events:auto;}
+    .mobile-menu-btn{
+      display:flex;align-items:center;justify-content:center;
+      position:fixed;top:14px;left:14px;z-index:45;
+      width:38px;height:38px;border-radius:50%;
+      background:rgba(29,35,44,0.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+      border:1px solid rgba(247,244,236,0.2);color:#F7F4EC;padding:0;font-size:16px;
+    }
+    .main{padding:70px 14px 60px;max-width:100%;}
+    .page h2{font-size:20px;}
+    .summary{grid-template-columns:1fr;gap:10px;}
+    .chart-grid{grid-template-columns:1fr;}
+    .ledger-form .row{flex-direction:column;}
+    .ledger-form input, .ledger-form select{min-width:0;width:100%;}
+    .txn{
+      display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;
+      grid-template-columns:unset;
+    }
+    .txn .date{order:0;flex:0 0 auto;font-size:10px;}
+    .txn .desc{order:1;flex:1 1 100%;}
+    .txn .stamp{order:2;}
+    .txn .amt{order:3;margin-left:auto;font-size:13px;}
+    .txn-actions{order:4;}
+    .ledger-head{padding:14px 16px;}
+    .ledger-form{padding:14px 16px;}
+    canvas{max-width:100%;}
+  }
   .sum-card{
     background:var(--glass-card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
     border:1px solid var(--glass-border);border-radius:12px;padding:16px 18px;position:relative;color:var(--glass-text);
@@ -196,7 +240,7 @@
 <svg class="deco-wave deco-wave-3" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
   <circle cx="100" cy="100" r="70" stroke="var(--gold)" stroke-width="14" fill="none" stroke-dasharray="2 26" stroke-linecap="round"/>
 </svg>
-<img src="./logo_1.png" class="deco-symbol deco-logo" style="top:10%;left:12%;width:70px;transform:rotate(-8deg);" alt="" />
+<img src="./logo.png" class="deco-symbol deco-logo" style="top:10%;left:12%;width:70px;transform:rotate(-8deg);" alt="" />
 <div class="deco-symbol" style="top:18%;right:14%;font-size:38px;transform:rotate(10deg);color:var(--credit);">$</div>
 <div class="deco-symbol" style="bottom:16%;left:8%;font-size:44px;transform:rotate(6deg);color:var(--credit);">%</div>
 <div class="deco-symbol" style="bottom:8%;right:10%;font-size:60px;transform:rotate(-6deg);color:var(--gold);">€</div>
@@ -205,7 +249,7 @@
 
 <div class="signin-wrap" id="signinWrap">
   <div class="signin-card">
-    <div class="mark"><img src="./logo_1.png" alt="" style="width:28px;height:28px;filter:invert(1);" /></div>
+    <div class="mark"><img src="./logo.png" alt="" style="width:28px;height:28px;filter:invert(1);" /></div>
     <div class="eyebrow">Bank Sync · Passbook</div>
     <h1>Your Ledger</h1>
     <div class="sub">Every account, every transaction — one place.</div>
@@ -217,9 +261,11 @@
 </div>
 
 <div class="app-shell" id="appShell" style="display:none;">
+  <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Menu">☰</button>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <aside class="sidebar">
     <div class="brand">
-      <img src="./logo_1.png" alt="" style="width:36px;height:36px;filter:invert(1);margin-bottom:10px;" />
+      <img src="./logo.png" alt="" style="width:36px;height:36px;filter:invert(1);margin-bottom:10px;" />
       <div class="eyebrow">Bank Sync · Passbook</div>
       <h1>Your Ledger</h1>
     </div>
@@ -230,6 +276,7 @@
       <button class="nav-item" data-page="investment">Investments</button>
       <button class="nav-item" data-page="credit_card">Credit Cards</button>
       <button class="nav-item" data-page="loan">Loans</button>
+      <button class="nav-item" data-page="monthreview">Month Review</button>
       <button class="nav-item" data-page="settings">Settings</button>
     </nav>
     <div class="sidebar-footer">
@@ -296,7 +343,7 @@
         </div>
       </div>
 
-      <div class="summary" style="grid-template-columns:1fr 1fr;">
+      <div class="summary chart-grid">
         <div class="ledger" style="margin-bottom:0;">
           <div class="ledger-head"><h3>Cash Flow Breakdown</h3></div>
           <div style="padding:20px;"><canvas id="cashFlowChart" height="220"></canvas></div>
@@ -443,6 +490,49 @@
       <div class="ledger"><div id="list-loan"></div></div>
     </section>
 
+    <section class="page" id="page-monthreview">
+      <h2 id="monthReviewTitle">Month Review</h2>
+      <div class="summary">
+        <div class="sum-card income">
+          <div class="label">Income this month</div>
+          <div class="amt" id="mrIncome">₹0</div>
+        </div>
+        <div class="sum-card transfer">
+          <div class="label">Transfer this month</div>
+          <div class="amt" id="mrTransfer">₹0</div>
+        </div>
+        <div class="sum-card expense">
+          <div class="label">Expense this month</div>
+          <div class="amt" id="mrExpense">₹0</div>
+        </div>
+        <div class="sum-card transfer">
+          <div class="label">Net Cash Flow</div>
+          <div class="amt" id="mrNetFlow">₹0</div>
+        </div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>Cash Flow This Month</h3></div>
+        <div style="padding:20px;"><canvas id="monthCashFlowChart" height="200"></canvas></div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-head">
+          <h3>EMIs Due This Month</h3>
+          <div class="count" id="mrEmiCount">0</div>
+        </div>
+        <div id="mrEmiList"></div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-head">
+          <h3>Transactions This Month</h3>
+          <div class="count" id="mrTxnCount">0 entries</div>
+        </div>
+        <div id="mrTxnList"></div>
+      </div>
+    </section>
+
     <section class="page" id="page-settings">
       <h2>Settings</h2>
       <div class="ledger">
@@ -506,12 +596,29 @@
     updateCharts();
   });
 
+  // ---- Mobile sidebar toggle ----
+  const sidebarEl = document.querySelector('.sidebar');
+  const backdropEl = document.getElementById('sidebarBackdrop');
+  function openSidebar() {
+    sidebarEl.classList.add('open');
+    backdropEl.classList.add('visible');
+  }
+  function closeSidebar() {
+    sidebarEl.classList.remove('open');
+    backdropEl.classList.remove('visible');
+  }
+  document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+    sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  backdropEl.addEventListener('click', closeSidebar);
+
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('page-' + btn.dataset.page).classList.add('active');
+      closeSidebar();
     });
   });
 
@@ -660,6 +767,7 @@
     const savingsRatePct = income > 0 ? ((income - expense) / income * 100) : 0;
     document.getElementById('savingsRate').textContent = savingsRatePct.toFixed(1) + '%';
 
+    updateMonthReview();
     updateCharts();
   }
 
@@ -819,11 +927,92 @@
     document.getElementById('creditUtil').textContent = creditUtilPct.toFixed(1) + '%';
     document.getElementById('debtRatio').textContent = debtRatioPct.toFixed(1) + '%';
 
+    updateMonthReview();
     updateCharts();
   }
 
   // ---- Charts ----
-  let cashFlowChartInst, netWorthChartInst, creditUtilChartInst;
+  let cashFlowChartInst, netWorthChartInst, creditUtilChartInst, monthCashFlowChartInst;
+
+  function updateMonthReview() {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    document.getElementById('monthReviewTitle').textContent =
+      'Month Review — ' + now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+    const monthTxns = latestTxns.filter(t => {
+      const d = new Date(t.timestamp);
+      return d.getFullYear() === y && d.getMonth() === m;
+    });
+
+    const income = monthTxns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0);
+    const transfer = monthTxns.filter(t => t.category === 'Transfer').reduce((s, t) => s + t.amount, 0);
+    const expense = monthTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+
+    document.getElementById('mrIncome').textContent = inr(income);
+    document.getElementById('mrTransfer').textContent = inr(transfer);
+    document.getElementById('mrExpense').textContent = inr(expense);
+    document.getElementById('mrNetFlow').textContent = inr(income - expense);
+
+    // Transactions list for this month
+    document.getElementById('mrTxnCount').textContent = monthTxns.length + ' entries';
+    const mrTxnListEl = document.getElementById('mrTxnList');
+    if (monthTxns.length === 0) {
+      mrTxnListEl.innerHTML = `<div class="empty">No transactions yet this month.</div>`;
+    } else {
+      mrTxnListEl.innerHTML = monthTxns.map(t => {
+        const isCredit = t.type === 'credit';
+        const stampClass = t.category === 'Income' ? 'income' : (t.category === 'Transfer' ? 'transfer' : 'expense');
+        const date = new Date(t.timestamp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        return `
+          <div class="txn">
+            <div class="date">${date}</div>
+            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'}</div>
+            <div class="stamp ${stampClass}">${t.category}</div>
+            <div class="amt ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'}${inr(t.amount)}</div>
+          </div>`;
+      }).join('');
+    }
+
+    // EMIs due this month
+    const emisThisMonth = latestAssets.filter(a => {
+      if (a.type !== 'loan' || !a.nextDueDate) return false;
+      const d = new Date(a.nextDueDate);
+      return d.getFullYear() === y && d.getMonth() === m;
+    });
+    document.getElementById('mrEmiCount').textContent = emisThisMonth.length;
+    const emiListEl = document.getElementById('mrEmiList');
+    if (emisThisMonth.length === 0) {
+      emiListEl.innerHTML = `<div class="empty">No EMI due dates recorded for this month.</div>`;
+    } else {
+      emiListEl.innerHTML = emisThisMonth.map(a => {
+        const days = Math.ceil((new Date(a.nextDueDate) - now) / 86400000);
+        const dueText = days < 0 ? `overdue ${Math.abs(days)}d` : (days === 0 ? 'due today' : `due in ${days}d`);
+        return `
+          <div class="txn">
+            <div class="date">${a.nextDueDate}</div>
+            <div class="desc">${a.name}</div>
+            <div class="stamp expense">${dueText}</div>
+            <div class="amt debit">${inr(a.emi || 0)}</div>
+          </div>`;
+      }).join('');
+    }
+
+    // Month cash flow chart
+    const c = themeColors();
+    const mcCtx = document.getElementById('monthCashFlowChart');
+    if (mcCtx && typeof Chart !== 'undefined') {
+      if (monthCashFlowChartInst) monthCashFlowChartInst.destroy();
+      monthCashFlowChartInst = new Chart(mcCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Income', 'Transfer', 'Expense'],
+          datasets: [{ data: [income, transfer, expense], backgroundColor: [c.credit, c.gold, c.debit], borderWidth: 0 }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+    }
+  }
 
   function themeColors() {
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
