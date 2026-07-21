@@ -537,6 +537,28 @@
       <h2>Settings</h2>
 
       <div class="ledger">
+        <div class="ledger-head"><h3>SMS Inbox (no sign-in needed in the Shortcut)</h3></div>
+        <div class="ledger-form">
+          <div class="footnote" style="margin-top:0;margin-bottom:14px;">
+            This replaces the whole sign-in / Bearer token setup. The Shortcut just POSTs the raw SMS text — no
+            authentication, no idToken, no headers to build correctly. The dashboard pulls new messages here and
+            parses/categorizes them using the same logic as everywhere else.
+          </div>
+          <div class="row">
+            <button id="pullInboxBtn">Pull &amp; import new SMS</button>
+            <span id="inboxStatus" style="font-size:12px;color:var(--muted);align-self:center;"></span>
+          </div>
+          <div class="footnote" style="margin-top:16px;">
+            <b>New Shortcut — one action, that's it:</b><br>
+            "Get Contents of URL" → POST →<br>
+            <code>https://firestore.googleapis.com/v1/projects/<span id="cfgProjectId2">—</span>/databases/(default)/documents/sms_inbox</code><br>
+            Headers: <code>Content-Type: application/json</code> (no Authorization header at all)<br>
+            Body (JSON): <code>{"fields":{"rawSms":{"stringValue":"[Shortcut Input]"},"processed":{"booleanValue":false}}}</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger">
         <div class="ledger-head"><h3>Self-transfer detection</h3></div>
         <div class="ledger-form">
           <div class="footnote" style="margin-top:0;margin-bottom:14px;">
@@ -555,7 +577,7 @@
       </div>
 
       <div class="ledger">
-        <div class="ledger-head"><h3>Direct Firestore access (no billing required)</h3></div>
+        <div class="ledger-head"><h3>Direct Firestore access (no billing required) — old approach, kept as fallback</h3></div>
         <div class="ledger-form">
           <div class="footnote" style="margin-top:0;margin-bottom:14px;">
             This links an email/password sign-in to your <b>same account</b> (same data, same UID) so your Shortcut can
@@ -620,7 +642,7 @@
     linkWithCredential, EmailAuthProvider
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, getDoc
+    getFirestore, collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, getDoc, getDocs
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   function randomKey(len = 32) {
@@ -691,6 +713,7 @@
     listenToAssets(user.uid);
 
     document.getElementById('cfgProjectId').textContent = firebaseConfig.projectId;
+    document.getElementById('cfgProjectId2').textContent = firebaseConfig.projectId;
     document.getElementById('cfgApiKey').textContent = firebaseConfig.apiKey;
     document.getElementById('cfgUid').textContent = user.uid;
 
@@ -699,6 +722,41 @@
     selfNames = savedNames;
     document.getElementById('selfNamesInput').value = savedNames.join(', ');
   }
+
+  document.getElementById('pullInboxBtn').addEventListener('click', async () => {
+    if (!currentUid) return;
+    const statusEl = document.getElementById('inboxStatus');
+    statusEl.textContent = 'Checking inbox…';
+    try {
+      const snap = await getDocs(collection(db, 'sms_inbox'));
+      let imported = 0;
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (data.processed) continue;
+        const rawSms = data.rawSms || data.body || '';
+        if (!rawSms) { await setDoc(doc(db, 'sms_inbox', d.id), { processed: true }, { merge: true }); continue; }
+
+        const parsed = parseRawSms(rawSms);
+        if (parsed) {
+          const ts = Date.now();
+          const txnId = `inbox_${d.id}`;
+          await setDoc(doc(db, 'users', currentUid, 'transactions', txnId), {
+            amount: parsed.amount,
+            type: parsed.type,
+            rawSms,
+            counterparty: parsed.counterparty || '',
+            accountId: 'sms-inbox',
+            timestamp: ts
+          });
+          imported++;
+        }
+        await setDoc(doc(db, 'sms_inbox', d.id), { processed: true }, { merge: true });
+      }
+      statusEl.textContent = imported ? `Imported ${imported} new transaction${imported === 1 ? '' : 's'}.` : 'No new messages.';
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+    }
+  });
 
   document.getElementById('saveSelfNamesBtn').addEventListener('click', async () => {
     if (!currentUid) return;
@@ -999,7 +1057,7 @@
   }
 
   function listenToTransactions(uid) {
-    const q = query(collection(db, 'users', uid, 'transactions'), orderBy('timestamp', 'desc'), limit(200));
+    const q = query(collection(db, 'users', uid, 'transactions'), limit(500));
     onSnapshot(q, (snap) => {
       rawTxnDocs = [];
       snap.forEach(d => {
@@ -1012,8 +1070,12 @@
             data.counterparty = data.counterparty || parsed.counterparty;
           }
         }
+        // If the Shortcut didn't send a timestamp, fall back to "now" so the
+        // transaction still shows up (sorted at the top) instead of being lost.
+        if (data.timestamp === undefined) data.timestamp = Date.now();
         rawTxnDocs.push({ id: d.id, ...data });
       });
+      rawTxnDocs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       recomputeAndRenderTransactions();
     });
   }
