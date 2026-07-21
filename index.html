@@ -595,7 +595,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getAuth, GoogleAuthProvider, signInWithPopup, signOut,
+    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
     linkWithCredential, EmailAuthProvider
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
@@ -694,9 +694,19 @@
 
   document.getElementById('googleBtn').addEventListener('click', async () => {
     try {
-      const result = await signInWithPopup(auth, new GoogleAuthProvider());
-      onAuthSuccess(result.user);
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      // onAuthSuccess fires via onAuthStateChanged below
     } catch (e) { alert('Google sign-in failed: ' + e.message); }
+  });
+
+  // ---- Persist session across page reloads ----
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      onAuthSuccess(user);
+    } else {
+      document.getElementById('signinWrap').style.display = 'flex';
+      document.getElementById('appShell').style.display = 'none';
+    }
   });
 
   document.getElementById('signOutBtn').addEventListener('click', async () => {
