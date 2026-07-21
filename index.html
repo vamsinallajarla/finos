@@ -537,6 +537,24 @@
       <h2>Settings</h2>
 
       <div class="ledger">
+        <div class="ledger-head"><h3>Self-transfer detection</h3></div>
+        <div class="ledger-form">
+          <div class="footnote" style="margin-top:0;margin-bottom:14px;">
+            Transactions between your own accounts (e.g. moving money from one bank account to another) shouldn't
+            count as real Income or Expense — they'll be bucketed into Transfer instead. This is detected by matching
+            the name(s) below against who the SMS says the money is to/from, and by matching account numbers against
+            your saved Bank Accounts.
+          </div>
+          <div class="row">
+            <input id="selfNamesInput" type="text" placeholder="Your name(s), comma-separated (e.g. NALLAJARLA, VAMSI NALLAJARLA)" />
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="saveSelfNamesBtn">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger">
         <div class="ledger-head"><h3>Direct Firestore access (no billing required)</h3></div>
         <div class="ledger-form">
           <div class="footnote" style="margin-top:0;margin-bottom:14px;">
@@ -564,9 +582,12 @@
             <b>Step 2 — write the transaction:</b> POST to<br>
             <code>https://firestore.googleapis.com/v1/projects/YOUR_PROJECT_ID/databases/(default)/documents/users/YOUR_UID/transactions</code><br>
             Header: <code>Authorization: Bearer &lt;idToken&gt;</code><br>
-            Body:
-            <code>{"fields":{"amount":{"doubleValue":1500},"type":{"stringValue":"credit"},"rawSms":{"stringValue":"full SMS text"},"accountId":{"stringValue":"iphone-shortcut"},"timestamp":{"integerValue":"1737000000000"}}}</code><br><br>
-            You don't need to set a category — the dashboard now categorizes automatically from <code>rawSms</code> and <code>type</code> the same way manual entries do.
+            Body — you only need to send the raw SMS text and a timestamp, nothing else:
+            <code>{"fields":{"rawSms":{"stringValue":"full SMS text here"},"timestamp":{"integerValue":"1737000000000"}}}</code><br><br>
+            The dashboard now extracts the amount, credit/debit direction, and category (Income/Transfer/Expense)
+            automatically from <code>rawSms</code> — no need to parse anything in the Shortcut itself. This also
+            handles messages that mention both "debited" and "credited" in the same text (common with account-transfer
+            SMS) by picking whichever word sits closest to the amount.
           </div>
         </div>
       </div>
@@ -599,7 +620,7 @@
     linkWithCredential, EmailAuthProvider
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc
+    getFirestore, collection, onSnapshot, query, orderBy, limit, doc, setDoc, deleteDoc, getDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   function randomKey(len = 32) {
@@ -672,7 +693,21 @@
     document.getElementById('cfgProjectId').textContent = firebaseConfig.projectId;
     document.getElementById('cfgApiKey').textContent = firebaseConfig.apiKey;
     document.getElementById('cfgUid').textContent = user.uid;
+
+    const userSnap = await getDoc(doc(db, 'users', user.uid));
+    const savedNames = userSnap.exists() ? (userSnap.data().selfNames || []) : [];
+    selfNames = savedNames;
+    document.getElementById('selfNamesInput').value = savedNames.join(', ');
   }
+
+  document.getElementById('saveSelfNamesBtn').addEventListener('click', async () => {
+    if (!currentUid) return;
+    const names = document.getElementById('selfNamesInput').value
+      .split(',').map(n => n.trim()).filter(Boolean);
+    selfNames = names;
+    await setDoc(doc(db, 'users', currentUid), { selfNames: names }, { merge: true });
+    recomputeAndRenderTransactions();
+  });
 
   document.getElementById('linkAccountBtn').addEventListener('click', async () => {
     const email = document.getElementById('linkEmail').value.trim();
@@ -728,11 +763,87 @@
     navigator.clipboard.writeText(el.value);
   });
 
+  let selfNames = [];
+
   const SALARY_KEYWORDS = ['SALARY', 'SAL CREDIT', 'SAL-', 'PAYROLL', 'WAGES', 'STIPEND'];
-  function categorize(type, text) {
+
+  function extractCounterparty(text) {
+    if (!text) return '';
+    const linkedMatch = /linked to mobile\s+[\dXx]+-([A-Za-z ]+)/i.exec(text);
+    if (linkedMatch) return linkedMatch[1].trim();
+    const toMatch = /\bto\s+([A-Z][A-Za-z0-9 .&\-]{2,30})/.exec(text);
+    if (toMatch) return toMatch[1].trim();
+    const fromMatch = /\bfrom\s+([A-Z][A-Za-z0-9 .&\-]{2,30})/.exec(text);
+    if (fromMatch) return fromMatch[1].trim();
+    return '';
+  }
+
+  /**
+   * True if this transaction looks like a transfer between the user's OWN
+   * accounts, based on either:
+   *  (a) the counterparty name matching one of the user's own name(s), or
+   *  (b) an account number in the SMS matching one of the user's saved bank accounts.
+   */
+  function isSelfTransfer(rawText, counterparty) {
+    const upperCounterparty = (counterparty || '').toUpperCase();
+    if (selfNames.some(n => n && upperCounterparty.includes(n.toUpperCase()))) return true;
+
+    const ownAccountNumbers = latestAssets
+      .filter(a => a.type === 'bank' && a.accountNumber)
+      .map(a => String(a.accountNumber).replace(/\D/g, ''))
+      .filter(n => n.length >= 4);
+    if (ownAccountNumbers.length && rawText) {
+      const digitsInText = rawText.replace(/\D/g, ' ').split(/\s+/).filter(Boolean);
+      // Also check masked forms like XX8685 by matching the trailing digits directly in the raw string
+      for (const acct of ownAccountNumbers) {
+        const last4 = acct.slice(-4);
+        if (rawText.includes(acct) || (last4.length === 4 && rawText.includes(last4))) return true;
+      }
+    }
+    return false;
+  }
+
+  function categorize(type, text, counterparty) {
+    if (isSelfTransfer(text, counterparty)) return 'Transfer';
     if (type !== 'credit') return 'Expense';
     const upper = (text || '').toUpperCase();
     return SALARY_KEYWORDS.some((k) => upper.includes(k)) ? 'Income' : 'Transfer';
+  }
+
+  /**
+   * Parses amount + direction (credit/debit) out of a raw bank SMS.
+   * Handles messages that mention both "debited" and "credited" (e.g. one
+   * referring to the sender's account, the other to the payee's) by picking
+   * whichever direction keyword sits closest to the amount, not just
+   * whichever appears anywhere in the text.
+   */
+  function parseRawSms(text) {
+    if (!text) return null;
+    const amountMatch = /(?:Rs\.?|INR)\s?([\d,]+(?:\.\d{1,2})?)/i.exec(text);
+    if (!amountMatch) return null;
+    const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    const amountIdx = amountMatch.index;
+
+    const creditWords = ['credited', 'received', 'deposited'];
+    const debitWords = ['debited', 'sent', 'spent', 'withdrawn', 'paid'];
+    const lower = text.toLowerCase();
+
+    let bestType = null, bestDist = Infinity;
+    function scan(words, type) {
+      for (const w of words) {
+        let idx = lower.indexOf(w);
+        while (idx !== -1) {
+          const dist = Math.abs(idx - amountIdx);
+          if (dist < bestDist) { bestDist = dist; bestType = type; }
+          idx = lower.indexOf(w, idx + 1);
+        }
+      }
+    }
+    scan(creditWords, 'credit');
+    scan(debitWords, 'debit');
+    if (!bestType) return null;
+
+    return { amount, type: bestType, counterparty: extractCounterparty(text) };
   }
 
   let editingTxnId = null;
@@ -784,18 +895,36 @@
     }
   });
 
+  let rawTxnDocs = [];
+
+  function recomputeAndRenderTransactions() {
+    const txns = rawTxnDocs.map(data => {
+      const copy = { ...data };
+      const counterparty = copy.counterparty || (parseRawSms(copy.rawSms || '') || {}).counterparty || '';
+      copy.category = categorize(copy.type, copy.rawSms || counterparty || '', counterparty);
+      if (!copy.counterparty) copy.counterparty = counterparty;
+      return copy;
+    });
+    renderTransactions(txns.filter(t => t.amount !== undefined && t.type !== undefined));
+  }
+
   function listenToTransactions(uid) {
     const q = query(collection(db, 'users', uid, 'transactions'), orderBy('timestamp', 'desc'), limit(200));
     onSnapshot(q, (snap) => {
-      const txns = [];
+      rawTxnDocs = [];
       snap.forEach(d => {
         const data = d.data();
-        if (!data.category) {
-          data.category = categorize(data.type, data.rawSms || data.counterparty || '');
+        if (data.amount === undefined || data.type === undefined) {
+          const parsed = parseRawSms(data.rawSms || data.rawText || '');
+          if (parsed) {
+            data.amount = data.amount ?? parsed.amount;
+            data.type = data.type ?? parsed.type;
+            data.counterparty = data.counterparty || parsed.counterparty;
+          }
         }
-        txns.push({ id: d.id, ...data });
+        rawTxnDocs.push({ id: d.id, ...data });
       });
-      renderTransactions(txns);
+      recomputeAndRenderTransactions();
     });
   }
 
@@ -829,7 +958,7 @@
 
     const income = txns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0);
     const transfer = txns.filter(t => t.category === 'Transfer').reduce((s, t) => s + t.amount, 0);
-    const expense = txns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+    const expense = txns.filter(t => t.type === 'debit' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0);
     const max = Math.max(income, transfer, expense, 1);
 
     document.getElementById('incomeTotal').textContent = inr(income);
@@ -920,6 +1049,7 @@
       latestAssets = [];
       snap.forEach(d => latestAssets.push({ id: d.id, ...d.data() }));
       renderAssets();
+      recomputeAndRenderTransactions();
     });
   }
 
@@ -1022,7 +1152,7 @@
 
     const income = monthTxns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0);
     const transfer = monthTxns.filter(t => t.category === 'Transfer').reduce((s, t) => s + t.amount, 0);
-    const expense = monthTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+    const expense = monthTxns.filter(t => t.type === 'debit' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0);
 
     document.getElementById('mrIncome').textContent = inr(income);
     document.getElementById('mrTransfer').textContent = inr(transfer);
@@ -1110,7 +1240,7 @@
     // Cash Flow doughnut
     const income = latestTxns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0);
     const transfer = latestTxns.filter(t => t.category === 'Transfer').reduce((s, t) => s + t.amount, 0);
-    const expense = latestTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+    const expense = latestTxns.filter(t => t.type === 'debit' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0);
     const cfCtx = document.getElementById('cashFlowChart');
     if (cfCtx) {
       if (cashFlowChartInst) cashFlowChartInst.destroy();
