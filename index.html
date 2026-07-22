@@ -169,20 +169,20 @@
     .chart-grid{grid-template-columns:1fr;}
     .ledger-form .row{flex-direction:column;}
     .ledger-form input, .ledger-form select{min-width:0;width:100%;}
-.txn{
-  display:grid;
-  grid-template-columns:1fr auto;
-  grid-template-areas:
-    "date stamp"
-    "desc desc"
-    "amt actions";
-  gap:4px 10px;align-items:center;
-}
-.txn .date{grid-area:date;font-size:10px;}
-.txn .stamp{grid-area:stamp;justify-self:end;}
-.txn .desc{grid-area:desc;width:100%;font-size:13.5px;word-break:break-word;overflow-wrap:break-word;}
-.txn .amt{grid-area:amt;font-size:13px;text-align:left;white-space:normal;word-break:break-word;}
-.txn-actions{grid-area:actions;justify-self:end;}
+    .txn{
+      display:grid;
+      grid-template-columns:1fr auto;
+      grid-template-areas:
+        "date stamp"
+        "desc desc"
+        "amt actions";
+      gap:4px 10px;align-items:center;
+    }
+    .txn .date{grid-area:date;font-size:10px;}
+    .txn .stamp{grid-area:stamp;justify-self:end;}
+    .txn .desc{grid-area:desc;width:100%;font-size:13.5px;word-break:break-word;overflow-wrap:break-word;}
+    .txn .amt{grid-area:amt;font-size:13px;text-align:left;white-space:normal;word-break:break-word;}
+    .txn-actions{grid-area:actions;justify-self:end;}
     .ledger-head{padding:14px 16px;}
     .ledger-form{padding:14px 16px;}
     canvas{max-width:100%;}
@@ -219,6 +219,7 @@
   .txn .date{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);word-break:break-word;}
   .txn .desc{font-size:13.5px;}
   .txn .desc .acct{display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .txn .desc .cat-tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--gold);background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.35);border-radius:3px;padding:1px 6px;margin-top:3px;}
   .stamp{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:3px;border:1.5px solid; transform:rotate(-2deg); white-space:nowrap;}
   .stamp.income{color:var(--credit);border-color:var(--credit);}
   .stamp.transfer{color:var(--gold);border-color:var(--gold);}
@@ -232,6 +233,9 @@
 
   .footnote{margin-top:20px;font-size:11.5px;color:var(--muted);}
   code{background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:3px;font-size:11px;}
+
+  .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);}
+  .checkbox-row input[type="checkbox"]{flex:0 0 auto;width:auto;min-width:0;}
 </style>
 </head>
 <body>
@@ -303,15 +307,19 @@
           <div class="amt" id="incomeTotal">₹0</div>
           <div class="bar"><div id="incomeBar" style="width:0%"></div></div>
         </div>
-        <div class="sum-card transfer">
-          <div class="label">Transfer</div>
-          <div class="amt" id="transferTotal">₹0</div>
-          <div class="bar"><div id="transferBar" style="width:0%"></div></div>
-        </div>
         <div class="sum-card expense">
           <div class="label">Expense (Debits)</div>
           <div class="amt" id="expenseTotal">₹0</div>
           <div class="bar"><div id="expenseBar" style="width:0%"></div></div>
+        </div>
+        <div class="sum-card transfer">
+          <div class="label">Monthly Surplus</div>
+          <div class="amt" id="surplusTotal">₹0</div>
+        </div>
+        <div class="sum-card transfer">
+          <div class="label">Transfer</div>
+          <div class="amt" id="transferTotal">₹0</div>
+          <div class="bar"><div id="transferBar" style="width:0%"></div></div>
         </div>
       </div>
       <div class="summary">
@@ -346,6 +354,10 @@
           <div class="label">Debt-to-Asset Ratio</div>
           <div class="amt" id="debtRatio">0%</div>
         </div>
+        <div class="sum-card expense">
+          <div class="label">Emergency Fund Target (3 mo)</div>
+          <div class="amt" id="emergencyFundTotal">₹0</div>
+        </div>
       </div>
 
       <div class="summary chart-grid">
@@ -362,6 +374,11 @@
       <div class="ledger" style="margin-top:20px;">
         <div class="ledger-head"><h3>Credit Card Utilization</h3></div>
         <div style="padding:20px;"><canvas id="creditUtilChart" height="180"></canvas></div>
+      </div>
+
+      <div class="ledger" style="margin-top:20px;">
+        <div class="ledger-head"><h3>Spending by Category</h3></div>
+        <div style="padding:20px;"><canvas id="categoryChart" height="220"></canvas></div>
       </div>
 
       <div class="footnote-canvas">Bank-only sync via SMS. Salary credits are the only entries counted as Income; every other credit is Transfer.</div>
@@ -381,6 +398,22 @@
           </div>
           <div class="row" style="margin-top:10px;">
             <input id="manDesc" type="text" placeholder="Description (e.g. Salary from Acme Corp, Amazon purchase)" />
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <select id="manAccount">
+              <option value="">No linked account</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <label class="checkbox-row">
+              <input type="checkbox" id="manIsTransfer" />
+              This is a transfer between my own accounts
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;display:none;" id="manToAccountRow">
+            <select id="manToAccount">
+              <option value="">Transfer to account…</option>
+            </select>
           </div>
           <div class="row" style="margin-top:10px;">
             <button id="manAddBtn">Add transaction</button>
@@ -850,6 +883,34 @@
 
   const SALARY_KEYWORDS = ['SALARY', 'SAL CREDIT', 'SAL-', 'PAYROLL', 'WAGES', 'STIPEND'];
 
+  // Keyword -> spending category, checked top-to-bottom (most specific first, generic
+  // "Bank Transfer" catch-all last so it doesn't shadow more specific matches above it).
+  const SPEND_CATEGORY_KEYWORDS = [
+    { category: 'Food & Dining', keywords: ['SWIGGY', 'ZOMATO'] },
+    { category: 'Transportation', keywords: ['UBER', 'OLA', 'RAPIDO'] },
+    { category: 'Shopping', keywords: ['AMAZON', 'FLIPKART'] },
+    { category: 'Groceries', keywords: ['DMART', 'RELIANCE', 'MORE'] },
+    { category: 'Entertainment', keywords: ['NETFLIX', 'SPOTIFY', 'HOTSTAR'] },
+    { category: 'EMI', keywords: ['HDFC EMI', 'ICICI EMI'] },
+    { category: 'Investments', keywords: ['SIP', 'MUTUAL FUND', 'ZERODHA'] },
+    { category: 'Income', keywords: ['SALARY', 'PAYROLL'] },
+    { category: 'Cash Withdrawal', keywords: ['ATM', 'CASH WD'] },
+    { category: 'Utilities', keywords: ['ELECTRICITY', 'BESCOM', 'TSSPDCL'] },
+    { category: 'Rent', keywords: ['RENT'] },
+    { category: 'Fuel', keywords: ['PETROL', 'IOCL', 'HPCL', 'BPCL'] },
+    { category: 'Medical', keywords: ['APOLLO', 'MEDPLUS'] },
+    { category: 'Bank Transfer', keywords: ['UPI', 'IMPS', 'NEFT'] }
+  ];
+
+  function detectSpendCategory(text) {
+    if (!text) return 'Other';
+    const upper = text.toUpperCase();
+    for (const { category, keywords } of SPEND_CATEGORY_KEYWORDS) {
+      if (keywords.some(k => upper.includes(k))) return category;
+    }
+    return 'Other';
+  }
+
   function extractCounterparty(text) {
     if (!text) return '';
     const linkedMatch = /linked to mobile\s+[\dXx]+-([A-Za-z ]+)/i.exec(text);
@@ -1044,13 +1105,19 @@
     return null;
   }
 
-  // Updates the matched bank account's balance: uses the SMS's own stated balance if present
-  // (ground truth), otherwise falls back to a simple add/subtract based on credit/debit.
-  async function applyAccountBalanceUpdate(uid, rawText, amount, type) {
-    const acct = findMatchingBankAccount(rawText);
+  // Updates a bank account's balance.
+  // - If an explicitAcctId is given (manual entry with a picked account), use that account
+  //   directly instead of trying to regex-match it out of free text.
+  // - Otherwise, fall back to matching the account/mobile number inside rawText (SMS sync path).
+  // - If the SMS states its own running balance, that's treated as ground truth and overrides
+  //   the simple add/subtract delta.
+  async function applyAccountBalanceUpdate(uid, rawText, amount, type, explicitAcctId = null) {
+    const acct = explicitAcctId
+      ? latestAssets.find(a => a.id === explicitAcctId && a.type === 'bank')
+      : findMatchingBankAccount(rawText);
     if (!acct) return;
 
-    const statedBalance = parseStatedBalance(rawText);
+    const statedBalance = rawText ? parseStatedBalance(rawText) : null;
     let newBalance;
     if (statedBalance !== null && !isNaN(statedBalance)) {
       newBalance = statedBalance;
@@ -1062,38 +1129,91 @@
     await setDoc(doc(db, 'users', uid, 'assets', acct.id), { balance: newBalance }, { merge: true });
   }
 
+  // Keeps the manual-entry "linked account" and "transfer to account" dropdowns in sync with
+  // the current list of saved Bank Accounts. Preserves whatever was already selected.
+  function refreshManAccountOptions() {
+    const bankAccounts = latestAssets.filter(a => a.type === 'bank');
+    const optionsHtml = bankAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+
+    const fromSel = document.getElementById('manAccount');
+    const fromCurrent = fromSel.value;
+    fromSel.innerHTML = '<option value="">No linked account</option>' + optionsHtml;
+    fromSel.value = fromCurrent;
+
+    const toSel = document.getElementById('manToAccount');
+    const toCurrent = toSel.value;
+    toSel.innerHTML = '<option value="">Transfer to account…</option>' + optionsHtml;
+    toSel.value = toCurrent;
+  }
+
+  document.getElementById('manIsTransfer').addEventListener('change', (e) => {
+    document.getElementById('manToAccountRow').style.display = e.target.checked ? 'flex' : 'none';
+  });
+
   let editingTxnId = null;
+
+  function resetManForm() {
+    document.getElementById('manAmount').value = '';
+    document.getElementById('manDesc').value = '';
+    document.getElementById('manAccount').value = '';
+    document.getElementById('manToAccount').value = '';
+    document.getElementById('manIsTransfer').checked = false;
+    document.getElementById('manToAccountRow').style.display = 'none';
+    editingTxnId = null;
+    document.getElementById('manAddBtn').textContent = 'Add transaction';
+    document.getElementById('manCancelBtn').style.display = 'none';
+  }
 
   document.getElementById('manAddBtn').addEventListener('click', async () => {
     const amount = parseFloat(document.getElementById('manAmount').value);
     const type = document.getElementById('manType').value;
     const desc = document.getElementById('manDesc').value.trim();
+    const fromAcctId = document.getElementById('manAccount').value || null;
+    const isTransfer = document.getElementById('manIsTransfer').checked;
+    const toAcctId = isTransfer ? (document.getElementById('manToAccount').value || null) : null;
+
     if (!amount || amount <= 0) { alert('Enter a valid amount'); return; }
     if (!currentUid) { alert('Not signed in'); return; }
+    if (isTransfer && (!fromAcctId || !toAcctId)) { alert('Pick both a from-account and a to-account for the transfer'); return; }
+    if (isTransfer && fromAcctId === toAcctId) { alert('Pick two different accounts'); return; }
 
-    const category = categorize(type, desc);
+    const fromAcctName = fromAcctId ? ((latestAssets.find(a => a.id === fromAcctId) || {}).name || '') : '';
+    const toAcctName = toAcctId ? ((latestAssets.find(a => a.id === toAcctId) || {}).name || '') : '';
+    const finalDesc = isTransfer ? `Self transfer: ${fromAcctName} \u2192 ${toAcctName}` : desc;
+
+    const category = isTransfer ? 'Transfer' : categorize(type, desc);
     const existing = editingTxnId ? latestTxns.find(x => x.id === editingTxnId) : null;
     const ts = existing ? existing.timestamp : Date.now();
     const txnId = editingTxnId || `manual_${ts}_${amount}`;
     const isNewTxn = !editingTxnId;
+
     await setDoc(doc(db, 'users', currentUid, 'transactions', txnId), {
-      amount, type, category, accountId: 'manual-entry', counterparty: desc, rawSms: desc, timestamp: ts
+      amount, type, category,
+      accountId: fromAcctId || 'manual-entry',
+      counterparty: finalDesc,
+      rawSms: finalDesc,
+      timestamp: ts,
+      isManualTransfer: isTransfer,
+      fromAccountId: fromAcctId || null,
+      toAccountId: toAcctId || null,
+      spendCategory: isTransfer ? 'Bank Transfer' : detectSpendCategory(finalDesc)
     });
-    if (isNewTxn) await applyAccountBalanceUpdate(currentUid, desc, amount, type);
-    document.getElementById('manAmount').value = '';
-    document.getElementById('manDesc').value = '';
-    editingTxnId = null;
-    document.getElementById('manAddBtn').textContent = 'Add transaction';
-    document.getElementById('manCancelBtn').style.display = 'none';
+
+    if (isNewTxn) {
+      if (isTransfer) {
+        // Two-sided update: debit the source account, credit the destination — same net effect
+        // as the two separate SMS a real inter-bank transfer would generate.
+        await applyAccountBalanceUpdate(currentUid, '', amount, 'debit', fromAcctId);
+        await applyAccountBalanceUpdate(currentUid, '', amount, 'credit', toAcctId);
+      } else {
+        await applyAccountBalanceUpdate(currentUid, desc, amount, type, fromAcctId);
+      }
+    }
+
+    resetManForm();
   });
 
-  document.getElementById('manCancelBtn').addEventListener('click', () => {
-    editingTxnId = null;
-    document.getElementById('manAmount').value = '';
-    document.getElementById('manDesc').value = '';
-    document.getElementById('manAddBtn').textContent = 'Add transaction';
-    document.getElementById('manCancelBtn').style.display = 'none';
-  });
+  document.getElementById('manCancelBtn').addEventListener('click', resetManForm);
 
   document.getElementById('txnList').addEventListener('click', async (e) => {
     const editBtn = e.target.closest('.edit-txn');
@@ -1103,7 +1223,22 @@
       if (!t) return;
       document.getElementById('manAmount').value = t.amount;
       document.getElementById('manType').value = t.type;
-      document.getElementById('manDesc').value = t.counterparty || '';
+
+      if (t.isManualTransfer) {
+        document.getElementById('manDesc').value = '';
+        document.getElementById('manAccount').value = t.fromAccountId || '';
+        document.getElementById('manIsTransfer').checked = true;
+        document.getElementById('manToAccountRow').style.display = 'flex';
+        document.getElementById('manToAccount').value = t.toAccountId || '';
+      } else {
+        document.getElementById('manDesc').value = t.counterparty || '';
+        const linkedAcct = t.accountId && t.accountId !== 'manual-entry' && t.accountId !== 'sms-inbox' ? t.accountId : '';
+        document.getElementById('manAccount').value = t.fromAccountId || linkedAcct;
+        document.getElementById('manIsTransfer').checked = false;
+        document.getElementById('manToAccountRow').style.display = 'none';
+        document.getElementById('manToAccount').value = '';
+      }
+
       editingTxnId = t.id;
       document.getElementById('manAddBtn').textContent = 'Update transaction';
       document.getElementById('manCancelBtn').style.display = 'inline-block';
@@ -1118,6 +1253,12 @@
   function recomputeAndRenderTransactions() {
     const txns = rawTxnDocs.map(data => {
       const copy = { ...data };
+      if (copy.isManualTransfer) {
+        // Manual transfers already know their own category/description — don't re-run
+        // self-transfer detection over free text for these.
+        copy.spendCategory = 'Bank Transfer';
+        return copy;
+      }
       const counterparty = copy.counterparty || (parseRawSms(copy.rawSms || '') || {}).counterparty || '';
       const transferInfo = detectSelfTransfer(copy.rawSms || counterparty || '', counterparty);
       copy.category = transferInfo.isTransfer
@@ -1126,6 +1267,9 @@
             ? (SALARY_KEYWORDS.some(k => (copy.rawSms || '').toUpperCase().includes(k)) ? 'Income' : 'Transfer')
             : 'Expense');
       copy.counterparty = transferInfo.isTransfer ? transferInfo.description : (counterparty || copy.counterparty);
+      copy.spendCategory = transferInfo.isTransfer
+        ? 'Bank Transfer'
+        : detectSpendCategory(copy.rawSms || copy.counterparty || '');
       return copy;
     });
     renderTransactions(txns.filter(t => t.amount !== undefined && t.type !== undefined));
@@ -1172,7 +1316,7 @@
         return `
           <div class="txn">
             <div class="date">${date}</div>
-            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'}<span class="acct">${t.accountId || ''}</span></div>
+            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'} <span class="acct">${t.accountId || ''}</span>${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
             <div class="stamp ${stampClass}">${t.category}</div>
             <div class="amt ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'}${inr(t.amount)}</div>
             <div class="txn-actions">
@@ -1194,6 +1338,11 @@
     document.getElementById('incomeBar').style.width = (income / max * 100) + '%';
     document.getElementById('transferBar').style.width = (transfer / max * 100) + '%';
     document.getElementById('expenseBar').style.width = (expense / max * 100) + '%';
+
+    const surplus = income - expense;
+    const surplusEl = document.getElementById('surplusTotal');
+    surplusEl.textContent = (surplus >= 0 ? '+' : '−') + inr(Math.abs(surplus));
+    surplusEl.style.color = surplus >= 0 ? 'var(--credit)' : 'var(--debit)';
 
     const savingsRatePct = income > 0 ? ((income - expense) / income * 100) : 0;
     document.getElementById('savingsRate').textContent = savingsRatePct.toFixed(1) + '%';
@@ -1336,6 +1485,7 @@
     renderList('investment', 'list-investment');
     renderList('credit_card', 'list-credit_card');
     renderList('loan', 'list-loan');
+    refreshManAccountOptions();
 
     const assetsSum = latestAssets
       .filter(a => a.type === 'bank' || a.type === 'investment')
@@ -1359,12 +1509,28 @@
     document.getElementById('creditUtil').textContent = creditUtilPct.toFixed(1) + '%';
     document.getElementById('debtRatio').textContent = debtRatioPct.toFixed(1) + '%';
 
+    // Emergency Fund target = 3 x monthly fixed expenses.
+    // Placeholder basis: Loan EMIs only, until fixed-expense categories (rent, subscriptions,
+    // insurance, etc.) are defined via transaction categorization — swap emiSum for that sum
+    // once available.
+    const bankSum = latestAssets.filter(a => a.type === 'bank').reduce((s, a) => s + (a.balance || 0), 0);
+    const emergencyTarget = emiSum * 3;
+    const emergencyEl = document.getElementById('emergencyFundTotal');
+    if (emergencyTarget > 0) {
+      const coveragePct = Math.min((bankSum / emergencyTarget) * 100, 999);
+      const covered = bankSum >= emergencyTarget;
+      emergencyEl.innerHTML = inr(emergencyTarget) +
+        `<br><span style="font-size:11px;color:${covered ? 'var(--credit)' : 'var(--debit)'};font-weight:600;">${covered ? 'Fully covered' : coveragePct.toFixed(0) + '% covered'} by bank balance</span>`;
+    } else {
+      emergencyEl.innerHTML = '₹0<br><span style="font-size:11px;color:var(--muted);">No EMIs recorded yet</span>';
+    }
+
     updateMonthReview();
     updateCharts();
   }
 
   // ---- Charts ----
-  let cashFlowChartInst, netWorthChartInst, creditUtilChartInst, monthCashFlowChartInst;
+  let cashFlowChartInst, netWorthChartInst, creditUtilChartInst, monthCashFlowChartInst, categoryChartInst;
 
   function updateMonthReview() {
     const now = new Date();
@@ -1399,7 +1565,7 @@
         return `
           <div class="txn">
             <div class="date">${date}</div>
-            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'}</div>
+            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'}${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
             <div class="stamp ${stampClass}">${t.category}</div>
             <div class="amt ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'}${inr(t.amount)}</div>
           </div>`;
@@ -1517,6 +1683,33 @@
           indexAxis: 'y',
           scales: { x: { stacked: true, grid: { color: c.grid } }, y: { stacked: true, grid: { color: c.grid } } },
           plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    // Spending by Category — only real expenses (debit, not a self-transfer), grouped by
+    // the keyword-matched category, sorted highest spend first.
+    const expenseTxns = latestTxns.filter(t => t.type === 'debit' && t.category !== 'Transfer');
+    const byCategory = {};
+    expenseTxns.forEach(t => {
+      const cat = t.spendCategory || 'Other';
+      byCategory[cat] = (byCategory[cat] || 0) + t.amount;
+    });
+    const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const catCtx = document.getElementById('categoryChart');
+    if (catCtx) {
+      if (categoryChartInst) categoryChartInst.destroy();
+      const palette = [c.debit, c.gold, c.credit, c.muted, '#8E7CC3', '#4A90A4', '#D4A574', '#B5654B', '#6B8E6E', '#A85751', '#7A6B8A', '#5B8A9A', '#C9A05C', '#8B5E5E'];
+      categoryChartInst = new Chart(catCtx, {
+        type: 'bar',
+        data: {
+          labels: catEntries.map(([cat]) => cat),
+          datasets: [{ data: catEntries.map(([, amt]) => amt), backgroundColor: catEntries.map((_, i) => palette[i % palette.length]) }]
+        },
+        options: {
+          indexAxis: 'y',
+          scales: { x: { grid: { color: c.grid } }, y: { grid: { color: c.grid } } },
+          plugins: { legend: { display: false } }
         }
       });
     }
