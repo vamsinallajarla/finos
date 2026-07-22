@@ -778,6 +778,15 @@
       const rawSms = data.rawSms || data.body || '';
       if (!rawSms) { await setDoc(doc(db, 'sms_inbox', d.id), { processed: true }, { merge: true }); continue; }
 
+      // Duplicate guard: if a transaction with this exact SMS text is already recorded
+      // (e.g. the same message arrived twice via the Shortcut/automation), skip creating
+      // another one — just mark this inbox doc processed so it doesn't keep resurfacing.
+      const isDuplicate = rawTxnDocs.some(t => (t.rawSms || '').trim() === rawSms.trim());
+      if (isDuplicate) {
+        await setDoc(doc(db, 'sms_inbox', d.id), { processed: true }, { merge: true });
+        continue;
+      }
+
       const parsed = parseRawSms(rawSms);
       if (parsed) {
         const ts = Date.now();
@@ -792,6 +801,8 @@
         });
         await applyAccountBalanceUpdate(currentUid, rawSms, parsed.amount, parsed.type);
         imported++;
+        // Guard against duplicates within the same batch too.
+        rawTxnDocs.push({ id: txnId, amount: parsed.amount, type: parsed.type, rawSms, timestamp: ts });
       }
       await setDoc(doc(db, 'sms_inbox', d.id), { processed: true }, { merge: true });
     }
@@ -1226,6 +1237,26 @@
 
   document.getElementById('manCancelBtn').addEventListener('click', resetManForm);
 
+  // Undoes whatever applyAccountBalanceUpdate did for this transaction, so deleting a
+  // (duplicate or wrong) entry actually corrects the account balance instead of leaving
+  // it permanently off. Always uses a plain inverse add/subtract — even if the original
+  // update used the bank's stated balance — since there's no way to reconstruct the exact
+  // prior stated balance after the fact; this is the closest correct approximation.
+  async function reverseAccountBalanceUpdate(uid, txn) {
+    if (txn.isManualTransfer) {
+      if (txn.fromAccountId) await applyAccountBalanceUpdate(uid, '', txn.amount, 'credit', txn.fromAccountId);
+      if (txn.toAccountId) await applyAccountBalanceUpdate(uid, '', txn.amount, 'debit', txn.toAccountId);
+      return;
+    }
+    const linkedId = txn.fromAccountId || (txn.accountId && txn.accountId !== 'manual-entry' && txn.accountId !== 'sms-inbox' ? txn.accountId : null);
+    const acct = linkedId
+      ? latestAssets.find(a => a.id === linkedId && a.type === 'bank')
+      : findMatchingBankAccount(txn.rawSms || '');
+    if (!acct) return;
+    const inverseType = txn.type === 'credit' ? 'debit' : 'credit';
+    await applyAccountBalanceUpdate(uid, '', txn.amount, inverseType, acct.id);
+  }
+
   document.getElementById('txnList').addEventListener('click', async (e) => {
     const editBtn = e.target.closest('.edit-txn');
     const delBtn = e.target.closest('.delete-txn');
@@ -1254,7 +1285,9 @@
       document.getElementById('manAddBtn').textContent = 'Update transaction';
       document.getElementById('manCancelBtn').style.display = 'inline-block';
     } else if (delBtn) {
-      if (!confirm('Delete this transaction?')) return;
+      if (!confirm('Delete this transaction? This will also reverse its effect on the linked account balance.')) return;
+      const t = latestTxns.find(x => x.id === delBtn.dataset.id);
+      if (t) await reverseAccountBalanceUpdate(currentUid, t);
       await deleteDoc(doc(db, 'users', currentUid, 'transactions', delBtn.dataset.id));
     }
   });
