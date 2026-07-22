@@ -401,6 +401,7 @@
       <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.4 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.5 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.4 5.1 29.5 3 24 3 16.3 3 9.7 7.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 36.2 26.7 37 24 37c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 40.6 16.2 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.1 5.6l6.2 5.2C40.9 36.3 45 30.8 45 24c0-1.4-.1-2.7-.4-3.5z"/></svg>
       Signin
     </button>
+    <div id="signinError" style="display:none;margin-top:14px;font-size:12.5px;color:var(--debit);line-height:1.5;text-align:left;background:color-mix(in srgb, var(--debit) 10%, transparent);border:1px solid color-mix(in srgb, var(--debit) 30%, transparent);border-radius:8px;padding:10px 12px;"></div>
   </div>
 </div>
 
@@ -894,7 +895,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
+    getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
     linkWithCredential, EmailAuthProvider
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
@@ -1124,17 +1125,42 @@
     }
   });
 
+  function showSignInError(message, code) {
+    const el = document.getElementById('signinError');
+    if (!el) { alert('Google sign-in failed: ' + message); return; }
+    el.textContent = 'Sign-in failed' + (code ? ` (${code})` : '') + ': ' + message;
+    el.style.display = 'block';
+  }
+
   document.getElementById('googleBtn').addEventListener('click', async () => {
+    const el = document.getElementById('signinError');
+    if (el) el.style.display = 'none';
+    const provider = new GoogleAuthProvider();
     try {
-      await signInWithRedirect(auth, new GoogleAuthProvider());
-      // Page navigates away and back; onAuthSuccess fires via onAuthStateChanged below once it returns.
-    } catch (e) { alert('Google sign-in failed: ' + e.message); }
+      // Popup is the smoother UX and works fine in most normal browser tabs — try it first.
+      await signInWithPopup(auth, provider);
+      // onAuthSuccess fires via onAuthStateChanged below.
+    } catch (e) {
+      console.error('Google popup sign-in error:', e.code, e.message);
+      const popupIssues = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'];
+      if (popupIssues.includes(e.code)) {
+        // Popup couldn't run here (common inside installed PWAs, in-app browsers, or when
+        // pop-ups are blocked) — fall back to a full-page redirect instead.
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (e2) {
+          showSignInError(e2.message, e2.code);
+        }
+      } else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+        showSignInError(e.message, e.code);
+      }
+    }
   });
 
-  // Surface any error from completing the redirect (e.g. unauthorized domain, blocked by browser).
+  // Surface any error from completing a redirect sign-in (e.g. unauthorized domain).
   getRedirectResult(auth).catch((e) => {
-    console.error('Google redirect sign-in error:', e);
-    alert('Google sign-in failed: ' + e.message);
+    console.error('Google redirect sign-in error:', e.code, e.message);
+    showSignInError(e.message, e.code);
   });
 
   // ---- Persist session across page reloads ----
