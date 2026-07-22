@@ -891,8 +891,12 @@
 
   const SALARY_KEYWORDS = ['SALARY', 'SAL CREDIT', 'SAL-', 'PAYROLL', 'WAGES', 'STIPEND'];
 
-  // Keyword -> spending category, checked top-to-bottom (most specific first, generic
-  // "Bank Transfer" catch-all last so it doesn't shadow more specific matches above it).
+  // Keyword -> spending category, checked top-to-bottom (most specific first).
+  // Note: "UPI/IMPS/NEFT" is deliberately NOT included here as a generic bucket — those
+  // words appear in almost every SMS regardless of what was actually bought (they describe
+  // the payment rail, not the purchase), so including them would misclassify ordinary
+  // merchant payments (e.g. a UPI payment to a tiffin vendor) as "Bank Transfer". Genuine
+  // self-transfers are already tagged "Bank Transfer" separately via detectSelfTransfer.
   const SPEND_CATEGORY_KEYWORDS = [
     { category: 'Food & Dining', keywords: ['SWIGGY', 'ZOMATO'] },
     { category: 'Transportation', keywords: ['UBER', 'OLA', 'RAPIDO'] },
@@ -906,8 +910,7 @@
     { category: 'Utilities', keywords: ['ELECTRICITY', 'BESCOM', 'TSSPDCL'] },
     { category: 'Rent', keywords: ['RENT'] },
     { category: 'Fuel', keywords: ['PETROL', 'IOCL', 'HPCL', 'BPCL'] },
-    { category: 'Medical', keywords: ['APOLLO', 'MEDPLUS'] },
-    { category: 'Bank Transfer', keywords: ['UPI', 'IMPS', 'NEFT'] }
+    { category: 'Medical', keywords: ['APOLLO', 'MEDPLUS'] }
   ];
 
   function detectSpendCategory(text) {
