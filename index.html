@@ -218,11 +218,26 @@
   }
   .icon-chip svg{width:18px;height:18px;}
   .icon-chip:hover{opacity:1;color:var(--primary);border-color:var(--primary);}
+  .topbar-user-wrap{position:relative;flex-shrink:0;}
   .topbar-user{
     display:flex;align-items:center;gap:10px;
     background:var(--paper-raised);border:1px solid var(--rule);border-radius:10px;
-    padding:6px 14px 6px 6px;box-shadow:var(--shadow-card);font-size:13px;color:var(--ink);white-space:nowrap;
+    padding:6px 12px 6px 6px;box-shadow:var(--shadow-card);font-size:13px;color:var(--ink);white-space:nowrap;
   }
+  .topbar-user:hover{border-color:var(--primary);}
+  .topbar-user-menu{
+    display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:170px;z-index:30;
+    background:var(--paper-raised);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow-card-hover);
+    padding:6px;flex-direction:column;gap:2px;
+  }
+  .topbar-user-menu.open{display:flex;}
+  .topbar-user-menu-item{
+    display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+    background:none;color:var(--ink);border:none;box-shadow:none;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:500;
+  }
+  .topbar-user-menu-item svg{width:16px;height:16px;flex-shrink:0;opacity:0.8;}
+  .topbar-user-menu-item:hover{background:var(--primary-soft);opacity:1;transform:none;}
+  .topbar-user-menu-item.danger:hover{background:color-mix(in srgb, var(--debit) 10%, transparent);color:var(--debit);}
   .topbar-avatar{
     width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;
     display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;flex-shrink:0;
@@ -467,9 +482,22 @@
         <button id="themeToggleBtn" class="icon-chip" title="Toggle theme (Light / Dark / Black &amp; White)" aria-label="Toggle theme">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g id="themeToggleIcon"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/></g></svg>
         </button>
-        <div class="topbar-user">
-          <div class="topbar-avatar" id="topbarAvatar">?</div>
-          <span id="topbarEmail">Not connected</span>
+        <div class="topbar-user-wrap">
+          <button class="topbar-user" id="topbarUserBtn">
+            <div class="topbar-avatar" id="topbarAvatar">?</div>
+            <span id="topbarEmail">Not connected</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="topbar-user-menu" id="topbarUserMenu">
+            <button class="topbar-user-menu-item" data-page="settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 01-4 0v-.2a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.2a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.2a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.2a1.7 1.7 0 00-1.5 1z"/></svg>
+              <span>Settings</span>
+            </button>
+            <button class="topbar-user-menu-item danger" id="topbarLogoutBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span>Log Out</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -989,7 +1017,7 @@
     await setDoc(doc(db, 'users', user.uid), { email: user.email || '', createdAt: Date.now() }, { merge: true });
     document.getElementById('signinWrap').style.display = 'none';
     document.getElementById('appShell').style.display = 'flex';
-    statusBadge.innerHTML = '<span class="pulse-dot"></span>synced · ' + (user.email || user.uid);
+    statusBadge.innerHTML = '<span class="pulse-dot"></span>synced';
     statusBadge.className = 'status live';
     const displayName = user.email || user.uid;
     document.getElementById('topbarEmail').textContent = displayName;
@@ -1176,11 +1204,31 @@
     }
   });
 
-  document.getElementById('signOutBtn').addEventListener('click', async () => {
+  async function doSignOut() {
     await signOut(auth);
     currentUid = null;
     document.getElementById('appShell').style.display = 'none';
     document.getElementById('signinWrap').style.display = 'flex';
+  }
+
+  document.getElementById('signOutBtn').addEventListener('click', doSignOut);
+  document.getElementById('topbarLogoutBtn').addEventListener('click', doSignOut);
+
+  // ---- Top bar user menu ----
+  const topbarUserBtn = document.getElementById('topbarUserBtn');
+  const topbarUserMenu = document.getElementById('topbarUserMenu');
+  topbarUserBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    topbarUserMenu.classList.toggle('open');
+  });
+  document.addEventListener('click', (e) => {
+    if (!topbarUserMenu.contains(e.target) && e.target !== topbarUserBtn) {
+      topbarUserMenu.classList.remove('open');
+    }
+  });
+  topbarUserMenu.querySelector('[data-page="settings"]').addEventListener('click', () => {
+    document.querySelector('.nav-item[data-page="settings"]').click();
+    topbarUserMenu.classList.remove('open');
   });
 
   document.getElementById('genKeyBtn').addEventListener('click', async () => {
