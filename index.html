@@ -324,6 +324,10 @@
       </div>
       <div class="summary">
         <div class="sum-card income">
+          <div class="label">Bank Balance</div>
+          <div class="amt" id="bankBalanceTotal">₹0</div>
+        </div>
+        <div class="sum-card income">
           <div class="label">Assets (Bank + Investments)</div>
           <div class="amt" id="assetsTotal">₹0</div>
         </div>
@@ -338,6 +342,10 @@
         <div class="sum-card expense">
           <div class="label">Monthly EMI Commitment</div>
           <div class="amt" id="emiTotal">₹0</div>
+        </div>
+        <div class="sum-card expense">
+          <div class="label">Next EMI Due</div>
+          <div class="amt" id="nextEmiDue">—</div>
         </div>
       </div>
 
@@ -363,22 +371,22 @@
       <div class="summary chart-grid">
         <div class="ledger" style="margin-bottom:0;">
           <div class="ledger-head"><h3>Cash Flow Breakdown</h3></div>
-          <div style="padding:20px;"><canvas id="cashFlowChart" height="220"></canvas></div>
+          <div style="padding:20px;height:160px;"><canvas id="cashFlowChart"></canvas></div>
         </div>
         <div class="ledger" style="margin-bottom:0;">
           <div class="ledger-head"><h3>Net Worth Composition</h3></div>
-          <div style="padding:20px;"><canvas id="netWorthChart" height="220"></canvas></div>
+          <div style="padding:20px;height:160px;"><canvas id="netWorthChart"></canvas></div>
         </div>
       </div>
 
       <div class="ledger" style="margin-top:20px;">
         <div class="ledger-head"><h3>Credit Card Utilization</h3></div>
-        <div style="padding:20px;"><canvas id="creditUtilChart" height="180"></canvas></div>
+        <div style="padding:20px;height:160px;"><canvas id="creditUtilChart"></canvas></div>
       </div>
 
       <div class="ledger" style="margin-top:20px;">
         <div class="ledger-head"><h3>Spending by Category</h3></div>
-        <div style="padding:20px;"><canvas id="categoryChart" height="220"></canvas></div>
+        <div style="padding:20px;height:180px;"><canvas id="categoryChart"></canvas></div>
       </div>
 
       <div class="footnote-canvas">Bank-only sync via SMS. Salary credits are the only entries counted as Income; every other credit is Transfer.</div>
@@ -551,7 +559,7 @@
 
       <div class="ledger">
         <div class="ledger-head"><h3>Cash Flow This Month</h3></div>
-        <div style="padding:20px;"><canvas id="monthCashFlowChart" height="200"></canvas></div>
+        <div style="padding:20px;height:150px;"><canvas id="monthCashFlowChart"></canvas></div>
       </div>
 
       <div class="ledger">
@@ -1497,10 +1505,28 @@
       .filter(a => a.type === 'loan' && a.emi)
       .reduce((s, a) => s + a.emi, 0);
 
+    const bankSum = latestAssets.filter(a => a.type === 'bank').reduce((s, a) => s + (a.balance || 0), 0);
+    document.getElementById('bankBalanceTotal').textContent = inr(bankSum);
+
     document.getElementById('assetsTotal').textContent = inr(assetsSum);
     document.getElementById('liabilitiesTotal').textContent = inr(liabSum);
     document.getElementById('netWorthTotal').textContent = inr(assetsSum - liabSum);
     document.getElementById('emiTotal').textContent = inr(emiSum);
+
+    // Next EMI Due — soonest upcoming due date across all loans that have one recorded.
+    const loansWithDue = latestAssets.filter(a => a.type === 'loan' && a.nextDueDate)
+      .sort((a, b) => new Date(a.nextDueDate) - new Date(b.nextDueDate));
+    const nextEmiEl = document.getElementById('nextEmiDue');
+    if (loansWithDue.length === 0) {
+      nextEmiEl.innerHTML = '—<br><span style="font-size:11px;color:var(--muted);">No due dates recorded</span>';
+    } else {
+      const next = loansWithDue[0];
+      const days = Math.ceil((new Date(next.nextDueDate) - new Date()) / 86400000);
+      const dueColor = days <= 3 ? 'var(--debit)' : (days <= 7 ? 'var(--gold)' : 'var(--muted)');
+      const dueText = days < 0 ? `overdue ${Math.abs(days)}d` : (days === 0 ? 'due today' : `due in ${days}d`);
+      nextEmiEl.innerHTML = inr(next.emi || 0) +
+        `<br><span style="font-size:11px;color:${dueColor};font-weight:600;">${next.name} · ${dueText}</span>`;
+    }
 
     const totalLimit = latestAssets.filter(a => a.type === 'credit_card').reduce((s, a) => s + (a.creditLimit || 0), 0);
     const totalCcOutstanding = latestAssets.filter(a => a.type === 'credit_card').reduce((s, a) => s + (a.outstanding || 0), 0);
@@ -1513,7 +1539,6 @@
     // Placeholder basis: Loan EMIs only, until fixed-expense categories (rent, subscriptions,
     // insurance, etc.) are defined via transaction categorization — swap emiSum for that sum
     // once available.
-    const bankSum = latestAssets.filter(a => a.type === 'bank').reduce((s, a) => s + (a.balance || 0), 0);
     const emergencyTarget = emiSum * 3;
     const emergencyEl = document.getElementById('emergencyFundTotal');
     if (emergencyTarget > 0) {
@@ -1607,7 +1632,7 @@
           labels: ['Income', 'Transfer', 'Expense'],
           datasets: [{ data: [income, transfer, expense], backgroundColor: [c.credit, c.gold, c.debit], borderWidth: 0 }]
         },
-        options: { plugins: { legend: { position: 'bottom' } } }
+        options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
       });
     }
   }
@@ -1643,7 +1668,7 @@
           labels: ['Income', 'Transfer', 'Expense'],
           datasets: [{ data: [income, transfer, expense], backgroundColor: [c.credit, c.gold, c.debit], borderWidth: 0 }]
         },
-        options: { plugins: { legend: { position: 'bottom' } } }
+        options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
       });
     }
 
@@ -1661,7 +1686,7 @@
           labels: ['Bank', 'Investments', 'Credit Card Debt', 'Loan Debt'],
           datasets: [{ data: [bank, inv, cc, loan], backgroundColor: [c.credit, c.gold, c.debit, c.muted], borderWidth: 0 }]
         },
-        options: { plugins: { legend: { position: 'bottom' } } }
+        options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
       });
     }
 
@@ -1680,6 +1705,7 @@
           ]
         },
         options: {
+          maintainAspectRatio: false,
           indexAxis: 'y',
           scales: { x: { stacked: true, grid: { color: c.grid } }, y: { stacked: true, grid: { color: c.grid } } },
           plugins: { legend: { position: 'bottom' } }
@@ -1707,6 +1733,7 @@
           datasets: [{ data: catEntries.map(([, amt]) => amt), backgroundColor: catEntries.map((_, i) => palette[i % palette.length]) }]
         },
         options: {
+          maintainAspectRatio: false,
           indexAxis: 'y',
           scales: { x: { grid: { color: c.grid } }, y: { grid: { color: c.grid } } },
           plugins: { legend: { display: false } }
