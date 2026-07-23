@@ -669,6 +669,9 @@
             </select>
           </div>
           <div class="row" style="margin-top:10px;">
+            <input id="manDate" type="date" title="Transaction date — change this for a missed/old transaction" />
+          </div>
+          <div class="row" style="margin-top:10px;">
             <input id="manDesc" type="text" placeholder="Description (e.g. Salary from Acme Corp, Amazon purchase)" />
           </div>
           <div class="row" style="margin-top:10px;">
@@ -1006,6 +1009,14 @@
   }
   function inr(n) {
     return '₹' + Math.round(n || 0).toLocaleString('en-IN');
+  }
+  // Formats a timestamp as YYYY-MM-DD using local time (not UTC), so the date shown in
+  // the <input type="date"> always matches the date the transaction actually shows
+  // under in the ledger — toISOString() would shift late-evening IST times to the next
+  // day once converted to UTC.
+  function toDateInputValue(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   const firebaseConfig = window.DEFAULT_FIREBASE_CONFIG;
@@ -1677,6 +1688,7 @@
 
   function resetManForm() {
     document.getElementById('manAmount').value = '';
+    document.getElementById('manDate').value = toDateInputValue(Date.now());
     document.getElementById('manDesc').value = '';
     document.getElementById('manAccount').value = '';
     document.getElementById('manToAccount').value = '';
@@ -1687,6 +1699,7 @@
     document.getElementById('manAddBtn').textContent = 'Add transaction';
     document.getElementById('manCancelBtn').style.display = 'none';
   }
+  resetManForm(); // initialize the date field to today on page load
 
   document.getElementById('manAddBtn').addEventListener('click', async () => {
     const amount = parseFloat(document.getElementById('manAmount').value);
@@ -1707,7 +1720,19 @@
 
     const category = isTransfer ? 'Transfer' : categorize(type, desc);
     const existing = editingTxnId ? latestTxns.find(x => x.id === editingTxnId) : null;
-    const ts = existing ? existing.timestamp : Date.now();
+
+    // Use the picked date from the form (for backdating missed/old transactions), keeping
+    // whatever time-of-day is already appropriate — the original entry's time when editing,
+    // or right now when creating a brand new one — since only the date field is exposed.
+    const dateVal = document.getElementById('manDate').value;
+    let ts;
+    if (dateVal) {
+      const [yy, mm, dd] = dateVal.split('-').map(Number);
+      const baseTime = existing ? new Date(existing.timestamp) : new Date();
+      ts = new Date(yy, mm - 1, dd, baseTime.getHours(), baseTime.getMinutes(), baseTime.getSeconds(), baseTime.getMilliseconds()).getTime();
+    } else {
+      ts = existing ? existing.timestamp : Date.now();
+    }
     const txnId = editingTxnId || `manual_${ts}_${amount}`;
     const isNewTxn = !editingTxnId;
 
@@ -1828,6 +1853,7 @@
       if (!t) return;
       document.getElementById('manAmount').value = t.amount;
       document.getElementById('manType').value = t.type;
+      document.getElementById('manDate').value = t.timestamp ? toDateInputValue(t.timestamp) : toDateInputValue(Date.now());
 
       if (t.isManualTransfer) {
         document.getElementById('manDesc').value = '';
