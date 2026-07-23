@@ -380,6 +380,8 @@
   .txn .desc{font-size:13.5px;}
   .txn .desc .acct{display:block;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:2px;}
   .txn .desc .cat-tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);background:color-mix(in srgb, var(--gold) 14%, transparent);border:1px solid color-mix(in srgb, var(--gold) 40%, transparent);border-radius:4px;padding:1px 6px;margin-top:3px;}
+  .txn .desc .manual-tag{display:inline-flex;align-items:center;gap:3px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--primary);background:color-mix(in srgb, var(--primary) 14%, transparent);border:1px solid color-mix(in srgb, var(--primary) 40%, transparent);border-radius:4px;padding:1px 6px 1px 5px;margin-top:3px;margin-right:5px;}
+  .txn .desc .manual-tag svg{width:9px;height:9px;flex-shrink:0;}
   .stamp{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;border:1px solid; white-space:nowrap;}
   .stamp.income{color:var(--credit);border-color:var(--credit);background:color-mix(in srgb, var(--credit) 10%, transparent);}
   .stamp.transfer{color:var(--gold);border-color:var(--gold);background:color-mix(in srgb, var(--gold) 10%, transparent);}
@@ -1091,7 +1093,8 @@
           accountId: 'sms-inbox',
           timestamp: ts,
           fromAccountId: transferInfo.fromAccountId || null,
-          toAccountId: transferInfo.toAccountId || null
+          toAccountId: transferInfo.toAccountId || null,
+          source: 'sms'
         });
         if (transferInfo.isTransfer && transferInfo.fromAccountId && transferInfo.toAccountId) {
           // Single SMS mentions both ends of the transfer — apply both sides directly
@@ -1535,12 +1538,12 @@
     const fromSel = document.getElementById('manAccount');
     const fromCurrent = fromSel.value;
     fromSel.innerHTML = '<option value="">No linked account</option>' + optionsHtml;
-    fromSel.value = fromCurrent;
+    setAccountSelectValue(fromSel, fromCurrent);
 
     const toSel = document.getElementById('manToAccount');
     const toCurrent = toSel.value;
     toSel.innerHTML = '<option value="">Transfer to account…</option>' + optionsHtml;
-    toSel.value = toCurrent;
+    setAccountSelectValue(toSel, toCurrent);
   }
 
   document.getElementById('manIsTransfer').addEventListener('change', (e) => {
@@ -1593,7 +1596,8 @@
       isManualTransfer: isTransfer,
       fromAccountId: fromAcctId || null,
       toAccountId: toAcctId || null,
-      spendCategory: isTransfer ? 'Bank Transfer' : detectSpendCategory(finalDesc)
+      spendCategory: isTransfer ? 'Bank Transfer' : detectSpendCategory(finalDesc),
+      source: 'manual'
     });
 
     if (isNewTxn) {
@@ -1632,6 +1636,27 @@
     await applyAccountBalanceUpdate(uid, '', txn.amount, inverseType, acct.id);
   }
 
+  // Sets a select's value to the given account id. If that id no longer matches any
+  // real account (e.g. the linked Bank Account was since deleted or renamed), a
+  // temporary "⚠ missing account" option is inserted and selected instead of silently
+  // leaving whatever option happened to be rendered before — which otherwise looks
+  // like a completely different (wrong) account is linked.
+  function setAccountSelectValue(selectEl, desiredId) {
+    // Clear any previous orphan placeholder before re-checking.
+    const existingPlaceholder = selectEl.querySelector('option[data-orphan="true"]');
+    if (existingPlaceholder) existingPlaceholder.remove();
+
+    selectEl.value = desiredId || '';
+    if (desiredId && selectEl.value !== desiredId) {
+      const opt = document.createElement('option');
+      opt.value = desiredId;
+      opt.textContent = `⚠ Missing account (${desiredId})`;
+      opt.dataset.orphan = 'true';
+      selectEl.insertBefore(opt, selectEl.firstChild);
+      selectEl.value = desiredId;
+    }
+  }
+
   document.getElementById('txnList').addEventListener('click', async (e) => {
     const editBtn = e.target.closest('.edit-txn');
     const delBtn = e.target.closest('.delete-txn');
@@ -1668,17 +1693,17 @@
 
       if (t.isManualTransfer) {
         document.getElementById('manDesc').value = '';
-        document.getElementById('manAccount').value = t.fromAccountId || '';
+        setAccountSelectValue(document.getElementById('manAccount'), t.fromAccountId);
         document.getElementById('manIsTransfer').checked = true;
         document.getElementById('manToAccountRow').style.display = 'flex';
-        document.getElementById('manToAccount').value = t.toAccountId || '';
+        setAccountSelectValue(document.getElementById('manToAccount'), t.toAccountId);
       } else {
         document.getElementById('manDesc').value = t.counterparty || '';
         const linkedAcct = t.accountId && t.accountId !== 'manual-entry' && t.accountId !== 'sms-inbox' ? t.accountId : '';
-        document.getElementById('manAccount').value = t.fromAccountId || linkedAcct;
+        setAccountSelectValue(document.getElementById('manAccount'), t.fromAccountId || linkedAcct);
         document.getElementById('manIsTransfer').checked = false;
         document.getElementById('manToAccountRow').style.display = 'none';
-        document.getElementById('manToAccount').value = '';
+        setAccountSelectValue(document.getElementById('manToAccount'), '');
       }
 
       editingTxnId = t.id;
@@ -1754,6 +1779,23 @@
     );
   }
 
+  // Determines whether a transaction was typed in manually vs. synced from an SMS.
+  // Prefers the explicit `source` field; falls back to the id prefix for older
+  // transactions recorded before that field existed.
+  function isManualEntry(t) {
+    if (t.source === 'manual') return true;
+    if (t.source === 'sms') return false;
+    return typeof t.id === 'string' && t.id.startsWith('manual_');
+  }
+
+  function accountLabel(accountId) {
+    if (!accountId) return '';
+    if (accountId === 'sms-inbox') return 'SMS sync';
+    if (accountId === 'manual-entry') return 'Manual entry (no linked account)';
+    const acct = latestAssets.find(a => a.id === accountId);
+    return acct ? acct.name : accountId;
+  }
+
   function renderTransactions(txns) {
     latestTxns = txns;
     const listEl = document.getElementById('txnList');
@@ -1771,7 +1813,7 @@
         return `
           <div class="txn">
             <div class="date">${date}</div>
-            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'} <span class="acct">${t.accountId || ''}</span>${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
+            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'} <span class="acct">${isManualEntry(t) ? '<span class="manual-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Manual</span>' : ''}${accountLabel(t.accountId)}</span>${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
             <div class="stamp ${stampClass}">${t.category}</div>
             <div class="amt ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'}${inr(t.amount)}</div>
             <div class="txn-actions">
@@ -2034,7 +2076,7 @@
         return `
           <div class="txn">
             <div class="date">${date}</div>
-            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'}${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
+            <div class="desc">${t.counterparty || t.accountId || 'Unlabeled'} <span class="acct">${isManualEntry(t) ? '<span class="manual-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Manual</span>' : ''}${accountLabel(t.accountId)}</span>${t.spendCategory ? `<span class="cat-tag">${t.spendCategory}</span>` : ''}</div>
             <div class="stamp ${stampClass}">${t.category}</div>
             <div class="amt ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'}${inr(t.amount)}</div>
           </div>`;
