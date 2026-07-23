@@ -536,6 +536,7 @@
         <div class="sum-card hero-card transfer">
           <div class="hero-row">
             <div class="hero-icon">Σ</div>
+            <div class="hero-chip" id="surplusBar">0%</div>
           </div>
           <div class="amt" id="surplusTotal">₹0</div>
           <div class="label">Monthly Surplus</div>
@@ -547,6 +548,13 @@
           </div>
           <div class="amt" id="transferTotal">₹0</div>
           <div class="label">Transfer</div>
+        </div>
+        <div class="sum-card hero-card transfer">
+          <div class="hero-row">
+            <div class="hero-icon">Δ</div>
+          </div>
+          <div class="amt" id="reconcileTotal">₹0</div>
+          <div class="label">Reconciliation</div>
         </div>
       </div>
       <div class="summary">
@@ -647,6 +655,11 @@
           <div class="row" style="margin-top:10px;">
             <select id="manAccount">
               <option value="">No linked account</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <select id="manCategory">
+              <option value="">Auto-detect category</option>
             </select>
           </div>
           <div class="row" style="margin-top:10px;">
@@ -979,6 +992,8 @@
   let latestTxns = [];
   let latestAssets = [];
   let cashFlowChartInst, netWorthChartInst, creditUtilChartInst, monthCashFlowChartInst, categoryChartInst;
+  let currentBankSum = 0;
+  let currentSurplus = 0;
 
   // ---- Theme toggle (Light / Dark / Black & White) ----
   const THEME_ORDER = ['light', 'dark', 'bw'];
@@ -1061,6 +1076,8 @@
     const savedNames = userSnap.exists() ? (userSnap.data().selfNames || []) : [];
     selfNames = savedNames;
     document.getElementById('selfNamesInput').value = savedNames.join(', ');
+    customCategories = userSnap.exists() ? (userSnap.data().customCategories || []) : [];
+    refreshCategoryOptions();
   }
 
   async function importInboxDocs(docs) {
@@ -1271,6 +1288,7 @@
   });
 
   let selfNames = [];
+  let customCategories = [];
 
   const SALARY_KEYWORDS = ['SALARY', 'SAL CREDIT', 'SAL-', 'PAYROLL', 'WAGES', 'STIPEND'];
 
@@ -1295,11 +1313,17 @@
     { category: 'UPI Transactions', keywords: ['UPI'] }
   ];
 
+  // Full list of built-in categories (used to populate the category picker and to know
+  // which names are "built-in" vs a user's custom ones).
+  const BUILTIN_CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Groceries', 'Entertainment', 'EMI', 'Investments', 'Income', 'Cash Withdrawal', 'Utilities', 'Rent', 'Fuel', 'Medical', 'UPI Transactions', 'Bank Transfer', 'Other'];
+
   function detectSpendCategory(text) {
     if (!text) return 'Other';
-    const upper = text.toUpperCase();
+    // Whole-word matching only — e.g. the keyword "RENT" must not match inside "parent",
+    // "current", "apparent", etc. \b word boundaries fix that.
     for (const { category, keywords } of SPEND_CATEGORY_KEYWORDS) {
-      if (keywords.some(k => upper.includes(k))) return category;
+      const hit = keywords.some(k => new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text));
+      if (hit) return category;
     }
     return 'Other';
   }
@@ -1546,6 +1570,32 @@
     setAccountSelectValue(toSel, toCurrent);
   }
 
+  // Populates the category picker with built-in categories + the user's custom ones,
+  // plus a special "+ Add new category…" entry at the bottom.
+  function refreshCategoryOptions() {
+    const sel = document.getElementById('manCategory');
+    const current = sel.value;
+    const allCats = [...BUILTIN_CATEGORIES, ...customCategories.filter(c => !BUILTIN_CATEGORIES.includes(c))];
+    sel.innerHTML = '<option value="">Auto-detect category</option>' +
+      allCats.map(c => `<option value="${c}">${c}</option>`).join('') +
+      '<option value="__add_new__">+ Add new category…</option>';
+    sel.value = current && [...allCats, ''].includes(current) ? current : '';
+  }
+
+  document.getElementById('manCategory').addEventListener('change', async (e) => {
+    if (e.target.value !== '__add_new__') return;
+    const name = prompt('New category name:');
+    e.target.value = ''; // reset in case they cancel
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (!customCategories.includes(trimmed) && !BUILTIN_CATEGORIES.includes(trimmed)) {
+      customCategories.push(trimmed);
+      if (currentUid) await setDoc(doc(db, 'users', currentUid), { customCategories }, { merge: true });
+    }
+    refreshCategoryOptions();
+    document.getElementById('manCategory').value = trimmed;
+  });
+
   document.getElementById('manIsTransfer').addEventListener('change', (e) => {
     document.getElementById('manToAccountRow').style.display = e.target.checked ? 'flex' : 'none';
   });
@@ -1557,6 +1607,7 @@
     document.getElementById('manDesc').value = '';
     document.getElementById('manAccount').value = '';
     document.getElementById('manToAccount').value = '';
+    document.getElementById('manCategory').value = '';
     document.getElementById('manIsTransfer').checked = false;
     document.getElementById('manToAccountRow').style.display = 'none';
     editingTxnId = null;
@@ -1587,6 +1638,19 @@
     const txnId = editingTxnId || `manual_${ts}_${amount}`;
     const isNewTxn = !editingTxnId;
 
+    // Preserve the transaction's original source (manual vs sms) when editing — this form
+    // is shared for editing any transaction, so simply saving shouldn't relabel an
+    // SMS-synced entry as manually entered just because its category got corrected.
+    const preservedSource = existing
+      ? (existing.source || (typeof existing.id === 'string' && existing.id.startsWith('inbox_') ? 'sms' : 'manual'))
+      : 'manual';
+
+    const chosenCategory = document.getElementById('manCategory').value;
+    const categoryManuallySet = !!chosenCategory;
+    const spendCategory = isTransfer
+      ? 'Bank Transfer'
+      : (categoryManuallySet ? chosenCategory : detectSpendCategory(finalDesc));
+
     await setDoc(doc(db, 'users', currentUid, 'transactions', txnId), {
       amount, type, category,
       accountId: fromAcctId || 'manual-entry',
@@ -1596,8 +1660,9 @@
       isManualTransfer: isTransfer,
       fromAccountId: fromAcctId || null,
       toAccountId: toAcctId || null,
-      spendCategory: isTransfer ? 'Bank Transfer' : detectSpendCategory(finalDesc),
-      source: 'manual'
+      spendCategory,
+      categoryManuallySet,
+      source: preservedSource
     });
 
     if (isNewTxn) {
@@ -1707,6 +1772,7 @@
       }
 
       editingTxnId = t.id;
+      document.getElementById('manCategory').value = t.categoryManuallySet ? (t.spendCategory || '') : '';
       document.getElementById('manAddBtn').textContent = 'Update transaction';
       document.getElementById('manCancelBtn').style.display = 'inline-block';
     } else if (delBtn) {
@@ -1738,7 +1804,7 @@
       copy.counterparty = transferInfo.isTransfer ? transferInfo.description : (counterparty || copy.counterparty);
       copy.spendCategory = transferInfo.isTransfer
         ? 'Bank Transfer'
-        : detectSpendCategory(copy.rawSms || copy.counterparty || '');
+        : (copy.categoryManuallySet ? copy.spendCategory : detectSpendCategory(copy.rawSms || copy.counterparty || ''));
       return copy;
     });
     renderTransactions(txns.filter(t => t.amount !== undefined && t.type !== undefined));
@@ -1838,12 +1904,18 @@
     document.getElementById('expenseBar').textContent = Math.round(expense / max * 100) + '%';
 
     const surplus = income - expense;
+    currentSurplus = surplus;
     const surplusEl = document.getElementById('surplusTotal');
     surplusEl.textContent = (surplus >= 0 ? '+' : '−') + inr(Math.abs(surplus));
     surplusEl.style.color = surplus >= 0 ? 'var(--credit)' : 'var(--debit)';
 
     const savingsRatePct = income > 0 ? ((income - expense) / income * 100) : 0;
     document.getElementById('savingsRate').textContent = savingsRatePct.toFixed(1) + '%';
+    const surplusBarEl = document.getElementById('surplusBar');
+    surplusBarEl.textContent = Math.round(savingsRatePct) + '%';
+    surplusBarEl.style.color = surplus >= 0 ? 'var(--credit)' : 'var(--debit)';
+    surplusBarEl.style.background = `color-mix(in srgb, ${surplus >= 0 ? 'var(--credit)' : 'var(--debit)'} 14%, transparent)`;
+    updateReconciliation();
 
     updateMonthReview();
     updateCharts();
@@ -1976,6 +2048,16 @@
     }
   }
 
+  // Reconciliation card = Bank Balance − Monthly Surplus (a straightforward difference,
+  // not a month-over-month check). Recalculated whenever either value changes.
+  function updateReconciliation() {
+    const el = document.getElementById('reconcileTotal');
+    if (!el) return;
+    const diff = currentBankSum - currentSurplus;
+    el.textContent = (diff >= 0 ? '+' : '−') + inr(Math.abs(diff));
+    el.style.color = diff >= 0 ? 'var(--credit)' : 'var(--debit)';
+  }
+
   function renderAssets() {
     renderList('bank', 'list-bank');
     renderList('investment', 'list-investment');
@@ -1995,6 +2077,8 @@
 
     const bankSum = latestAssets.filter(a => a.type === 'bank').reduce((s, a) => s + (a.balance || 0), 0);
     document.getElementById('bankBalanceTotal').textContent = inr(bankSum);
+    currentBankSum = bankSum;
+    updateReconciliation();
 
     document.getElementById('assetsTotal').textContent = inr(assetsSum);
     document.getElementById('liabilitiesTotal').textContent = inr(liabSum);
@@ -2121,6 +2205,8 @@
         options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
       });
     }
+
+    updateReconciliation();
   }
 
   function themeColors() {
