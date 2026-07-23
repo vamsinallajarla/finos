@@ -708,8 +708,12 @@
             <select id="ledgerCategoryFilter">
               <option value="">All categories</option>
             </select>
+            <input type="date" id="ledgerDayFilter" title="Show only this day's transactions" />
+            <button class="ghost" id="ledgerTodayBtn">Today</button>
+            <button class="ghost" id="ledgerClearDayBtn" style="display:none;">Clear day</button>
           </div>
-          <div class="footnote" id="categorySpendSummary" style="margin-top:12px;margin-bottom:0;"></div>
+          <div class="footnote" id="daySpendSummary" style="margin-top:12px;margin-bottom:0;"></div>
+          <div class="footnote" id="categorySpendSummary" style="margin-top:4px;margin-bottom:0;"></div>
         </div>
       </div>
       <div class="ledger">
@@ -1122,6 +1126,23 @@
   });
 
   document.getElementById('ledgerCategoryFilter').addEventListener('change', () => {
+    renderTransactions(latestTxns);
+  });
+
+  document.getElementById('ledgerDayFilter').addEventListener('change', () => {
+    document.getElementById('ledgerClearDayBtn').style.display = document.getElementById('ledgerDayFilter').value ? 'inline-block' : 'none';
+    renderTransactions(latestTxns);
+  });
+
+  document.getElementById('ledgerTodayBtn').addEventListener('click', () => {
+    document.getElementById('ledgerDayFilter').value = toDateInputValue(Date.now());
+    document.getElementById('ledgerClearDayBtn').style.display = 'inline-block';
+    renderTransactions(latestTxns);
+  });
+
+  document.getElementById('ledgerClearDayBtn').addEventListener('click', () => {
+    document.getElementById('ledgerDayFilter').value = '';
+    document.getElementById('ledgerClearDayBtn').style.display = 'none';
     renderTransactions(latestTxns);
   });
 
@@ -1956,6 +1977,14 @@
     });
   }
 
+  // Filters to a single specific day (YYYY-MM-DD, from the Transactions page's own day
+  // filter) — deliberately independent of the global month picker, since picking "today"
+  // here shouldn't change Overview's month-based totals on a different page.
+  function getDayFiltered(txns, dayStr) {
+    if (!dayStr) return txns;
+    return txns.filter(t => t.timestamp && toDateInputValue(t.timestamp) === dayStr);
+  }
+
   function refreshLedgerCategoryFilterOptions() {
     const sel = document.getElementById('ledgerCategoryFilter');
     if (!sel) return;
@@ -1987,23 +2016,46 @@
     const listEl = document.getElementById('txnList');
     const monthTxns = getMonthFiltered(txns);
 
+    // The day filter is local to the Transactions page — it overrides the month scope for
+    // what's displayed/summarized here, but never touches Overview's month-based totals
+    // (those are computed from monthTxns further below, untouched by dayFilterVal).
+    const dayFilterVal = document.getElementById('ledgerDayFilter')?.value || '';
+    const ledgerScopeTxns = dayFilterVal ? getDayFiltered(txns, dayFilterVal) : monthTxns;
+
     const categoryFilterVal = document.getElementById('ledgerCategoryFilter')?.value || '';
-    let displayTxns = getSearchFiltered(monthTxns);
+    let displayTxns = getSearchFiltered(ledgerScopeTxns);
     if (categoryFilterVal) {
       displayTxns = displayTxns.filter(t => (t.spendCategory || 'Other') === categoryFilterVal);
     }
 
     document.getElementById('txnCount').textContent =
-      displayTxns.length + (displayTxns.length !== monthTxns.length ? ` of ${monthTxns.length}` : '') + ' entries';
+      displayTxns.length + (displayTxns.length !== ledgerScopeTxns.length ? ` of ${ledgerScopeTxns.length}` : '') + ' entries';
 
-    // Category spend summary — total spent in the selected category, within the current
-    // month scope, independent of the free-text search.
+    // Day spend summary — quick "what did I spend today/on this day" glance, independent
+    // of any category filter or search term.
+    const daySummaryEl = document.getElementById('daySpendSummary');
+    if (daySummaryEl) {
+      if (dayFilterVal) {
+        const dayIncome = ledgerScopeTxns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0);
+        const dayExpense = ledgerScopeTxns.filter(t => t.type === 'debit' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0);
+        const dayNet = dayIncome - dayExpense;
+        const dayLabel = new Date(dayFilterVal + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        daySummaryEl.innerHTML = `<b>${dayLabel}</b> — Income <b style="color:var(--credit)">${inr(dayIncome)}</b> · Expense <b style="color:var(--debit)">${inr(dayExpense)}</b> · Net <b style="color:${dayNet >= 0 ? 'var(--credit)' : 'var(--debit)'}">${inr(dayNet)}</b> (${ledgerScopeTxns.length} transaction${ledgerScopeTxns.length === 1 ? '' : 's'})`;
+      } else {
+        daySummaryEl.innerHTML = '';
+      }
+    }
+
+    // Category spend summary — total spent in the selected category, within whichever
+    // scope is active (a specific day if picked, else the current month), independent of
+    // the free-text search.
     const summaryEl = document.getElementById('categorySpendSummary');
     if (summaryEl) {
       if (categoryFilterVal) {
-        const catTxns = monthTxns.filter(t => (t.spendCategory || 'Other') === categoryFilterVal && t.type === 'debit' && t.category !== 'Transfer');
+        const catTxns = ledgerScopeTxns.filter(t => (t.spendCategory || 'Other') === categoryFilterVal && t.type === 'debit' && t.category !== 'Transfer');
         const catTotal = catTxns.reduce((s, t) => s + t.amount, 0);
-        summaryEl.innerHTML = `Total spent on <b>${categoryFilterVal}</b>${selectedMonthKey ? ' this month' : ' (all time)'}: <b style="color:var(--debit)">${inr(catTotal)}</b> across ${catTxns.length} transaction${catTxns.length === 1 ? '' : 's'}`;
+        const scopeLabel = dayFilterVal ? 'on this day' : (selectedMonthKey ? 'this month' : '(all time)');
+        summaryEl.innerHTML = `Total spent on <b>${categoryFilterVal}</b> ${scopeLabel}: <b style="color:var(--debit)">${inr(catTotal)}</b> across ${catTxns.length} transaction${catTxns.length === 1 ? '' : 's'}`;
       } else {
         summaryEl.innerHTML = '';
       }
