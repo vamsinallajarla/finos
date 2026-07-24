@@ -313,6 +313,11 @@
 
   .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:28px;}
   .chart-grid{grid-template-columns:1fr 1fr;}
+  .chart-with-stat{display:flex;align-items:center;gap:16px;padding:20px;}
+  .chart-stat{flex:0 0 auto;min-width:100px;max-width:130px;}
+  .chart-stat-value{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:21px;font-variant-numeric:tabular-nums;letter-spacing:-0.01em;color:var(--ink);line-height:1.15;word-break:break-word;}
+  .chart-stat-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+  .chart-canvas-wrap{flex:1;height:160px;min-width:0;position:relative;}
 
   /* ---- Mobile (iPhone 13 and similar, <=640px) ---- */
   .mobile-menu-btn{display:none;}
@@ -341,6 +346,8 @@
     .page h2{font-size:20px;}
     .summary{grid-template-columns:1fr;gap:10px;}
     .chart-grid{grid-template-columns:1fr;}
+    .chart-with-stat{flex-direction:column;align-items:stretch;gap:10px;}
+    .chart-stat{max-width:none;display:flex;align-items:baseline;gap:8px;}
     .ledger-form .row{flex-direction:column;}
     .ledger-form input, .ledger-form select{min-width:0;width:100%;}
     .txn{
@@ -673,11 +680,23 @@
       <div class="summary chart-grid">
         <div class="ledger" style="margin-bottom:0;">
           <div class="ledger-head"><h3>Cash Flow Breakdown</h3></div>
-          <div style="padding:20px;height:160px;"><canvas id="cashFlowChart"></canvas></div>
+          <div class="chart-with-stat">
+            <div class="chart-stat">
+              <div class="chart-stat-value" id="cashFlowStatValue">₹0</div>
+              <div class="chart-stat-label">Net flow</div>
+            </div>
+            <div class="chart-canvas-wrap"><canvas id="cashFlowChart"></canvas></div>
+          </div>
         </div>
         <div class="ledger" style="margin-bottom:0;">
           <div class="ledger-head"><h3>Net Worth Composition</h3></div>
-          <div style="padding:20px;height:160px;"><canvas id="netWorthChart"></canvas></div>
+          <div class="chart-with-stat">
+            <div class="chart-stat">
+              <div class="chart-stat-value" id="netWorthStatValue">₹0</div>
+              <div class="chart-stat-label">Net worth</div>
+            </div>
+            <div class="chart-canvas-wrap"><canvas id="netWorthChart"></canvas></div>
+          </div>
         </div>
       </div>
 
@@ -967,7 +986,13 @@
 
       <div class="ledger">
         <div class="ledger-head"><h3>Cash Flow This Month</h3></div>
-        <div style="padding:20px;height:150px;"><canvas id="monthCashFlowChart"></canvas></div>
+        <div class="chart-with-stat">
+          <div class="chart-stat">
+            <div class="chart-stat-value" id="monthCashFlowStatValue">₹0</div>
+            <div class="chart-stat-label">Net flow</div>
+          </div>
+          <div class="chart-canvas-wrap" style="height:150px;"><canvas id="monthCashFlowChart"></canvas></div>
+        </div>
       </div>
 
       <div class="ledger">
@@ -2616,9 +2641,9 @@
           maintainAspectRatio: false, cutout: '68%',
           animation: { duration: 700, easing: 'easeOutQuart' },
           plugins: { legend: { position: 'bottom' } }
-        },
-        plugins: [centerTextPlugin(() => 'Net flow', () => inr(income - expense), c)]
+        }
       });
+      animateAmount(document.getElementById('monthCashFlowStatValue'), income - expense);
     }
 
     updateReconciliation();
@@ -2634,31 +2659,6 @@
       gold: dark ? '#FFC069' : '#B9781E',
       muted: dark ? '#8892A6' : '#6B7385',
       neon: dark ? '#5B9DF9' : '#3B82F6'
-    };
-  }
-
-  // Draws a big total + small label in the empty middle of a doughnut chart, so the
-  // headline number is legible at a glance instead of only living in the legend.
-  function centerTextPlugin(getLabel, getValue, colors) {
-    return {
-      id: 'centerText_' + Math.random().toString(36).slice(2),
-      afterDraw(chart) {
-        const { ctx, chartArea } = chart;
-        if (!chartArea) return;
-        const x = (chartArea.left + chartArea.right) / 2;
-        const y = (chartArea.top + chartArea.bottom) / 2;
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = "700 17px 'JetBrains Mono', monospace";
-        ctx.fillStyle = colors.text;
-        ctx.fillText(getValue(), x, y - 6);
-        ctx.font = "600 9.5px 'JetBrains Mono', monospace";
-        ctx.fillStyle = colors.muted;
-        ctx.letterSpacing = '1px';
-        ctx.fillText(getLabel().toUpperCase(), x, y + 12);
-        ctx.restore();
-      }
     };
   }
 
@@ -2686,9 +2686,9 @@
           maintainAspectRatio: false, cutout: '68%',
           animation: { duration: 700, easing: 'easeOutQuart' },
           plugins: { legend: { position: 'bottom' } }
-        },
-        plugins: [centerTextPlugin(() => 'Net flow', () => inr(income - expense), c)]
+        }
       });
+      animateAmount(document.getElementById('cashFlowStatValue'), income - expense);
     }
 
     // Net Worth Composition doughnut
@@ -2709,9 +2709,9 @@
           maintainAspectRatio: false, cutout: '68%',
           animation: { duration: 700, easing: 'easeOutQuart' },
           plugins: { legend: { position: 'bottom' } }
-        },
-        plugins: [centerTextPlugin(() => 'Net worth', () => inr(bank + inv - cc - loan), c)]
+        }
       });
+      animateAmount(document.getElementById('netWorthStatValue'), bank + inv - cc - loan);
     }
 
     // Credit utilization bar per card
