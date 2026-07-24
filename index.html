@@ -767,6 +767,43 @@
     <section class="page" id="page-transactions">
       <h2>Transactions</h2>
       <div class="ledger">
+        <div class="ledger-head"><h3>Filter Ledger</h3></div>
+        <div class="ledger-form">
+          <div class="row">
+            <select id="ledgerCategoryFilter">
+              <option value="">All categories</option>
+            </select>
+            <input type="date" id="ledgerDayFilter" title="Show only this day's transactions" />
+            <button class="ghost" id="ledgerTodayBtn">Today</button>
+            <button class="ghost" id="ledgerClearDayBtn" style="display:none;">Clear day</button>
+          </div>
+          <div class="footnote" id="daySpendSummary" style="margin-top:12px;margin-bottom:0;"></div>
+          <div class="footnote" id="categorySpendSummary" style="margin-top:4px;margin-bottom:0;"></div>
+        </div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>This Month at a Glance</h3></div>
+        <div class="chart-with-stat">
+          <div class="chart-stat">
+            <div class="chart-stat-value" id="txnScopeStatValue">₹0</div>
+            <div class="chart-stat-label">Net flow</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="txnScopeChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="ledger">
+        <div class="ledger-head">
+          <h3>Ledger</h3>
+          <div class="count" id="txnCount">0 entries</div>
+        </div>
+        <div id="txnList">
+          <div class="empty"><div class="big">No entries yet</div>Waiting for the first synced SMS or manual entry.</div>
+        </div>
+      </div>
+
+      <div class="ledger">
         <div class="ledger-head"><h3>Add transaction</h3></div>
         <div class="ledger-form">
           <div class="row">
@@ -809,30 +846,6 @@
           </div>
         </div>
       </div>
-      <div class="ledger">
-        <div class="ledger-head"><h3>Filter Ledger</h3></div>
-        <div class="ledger-form">
-          <div class="row">
-            <select id="ledgerCategoryFilter">
-              <option value="">All categories</option>
-            </select>
-            <input type="date" id="ledgerDayFilter" title="Show only this day's transactions" />
-            <button class="ghost" id="ledgerTodayBtn">Today</button>
-            <button class="ghost" id="ledgerClearDayBtn" style="display:none;">Clear day</button>
-          </div>
-          <div class="footnote" id="daySpendSummary" style="margin-top:12px;margin-bottom:0;"></div>
-          <div class="footnote" id="categorySpendSummary" style="margin-top:4px;margin-bottom:0;"></div>
-        </div>
-      </div>
-      <div class="ledger">
-        <div class="ledger-head">
-          <h3>Ledger</h3>
-          <div class="count" id="txnCount">0 entries</div>
-        </div>
-        <div id="txnList">
-          <div class="empty"><div class="big">No entries yet</div>Waiting for the first synced SMS or manual entry.</div>
-        </div>
-      </div>
     </section>
 
     <section class="page" id="page-analytics">
@@ -865,6 +878,13 @@
 
     <section class="page" id="page-bank">
       <h2>Bank Accounts</h2>
+      <div class="ledger"><div id="list-bank"></div></div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>Balance by Account</h3></div>
+        <div style="padding:20px;height:200px;"><canvas id="bankBalanceChart"></canvas></div>
+      </div>
+
       <div class="ledger">
         <div class="ledger-head"><h3>Add bank account</h3></div>
         <div class="ledger-form">
@@ -885,11 +905,17 @@
           </div>
         </div>
       </div>
-      <div class="ledger"><div id="list-bank"></div></div>
     </section>
 
     <section class="page" id="page-investment">
       <h2>Investments</h2>
+      <div class="ledger"><div id="list-investment"></div></div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>Value by Investment</h3></div>
+        <div style="padding:20px;height:200px;"><canvas id="investmentValueChart"></canvas></div>
+      </div>
+
       <div class="ledger">
         <div class="ledger-head"><h3>Add investment</h3></div>
         <div class="ledger-form">
@@ -907,11 +933,17 @@
           </div>
         </div>
       </div>
-      <div class="ledger"><div id="list-investment"></div></div>
     </section>
 
     <section class="page" id="page-credit_card">
       <h2>Credit Cards</h2>
+      <div class="ledger"><div id="list-credit_card"></div></div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>Utilization by Card</h3></div>
+        <div style="padding:20px;height:200px;"><canvas id="creditCardPageChart"></canvas></div>
+      </div>
+
       <div class="ledger">
         <div class="ledger-head"><h3>Add credit card</h3></div>
         <div class="ledger-form">
@@ -929,11 +961,17 @@
           </div>
         </div>
       </div>
-      <div class="ledger"><div id="list-credit_card"></div></div>
     </section>
 
     <section class="page" id="page-loan">
       <h2>Loans</h2>
+      <div class="ledger"><div id="list-loan"></div></div>
+
+      <div class="ledger">
+        <div class="ledger-head"><h3>Outstanding vs Sanctioned</h3></div>
+        <div style="padding:20px;height:200px;"><canvas id="loanChart"></canvas></div>
+      </div>
+
       <div class="ledger">
         <div class="ledger-head"><h3>Add loan</h3></div>
         <div class="ledger-form">
@@ -956,7 +994,6 @@
           </div>
         </div>
       </div>
-      <div class="ledger"><div id="list-loan"></div></div>
     </section>
 
     <section class="page" id="page-monthreview">
@@ -1224,6 +1261,7 @@
   let latestTxns = [];
   let latestAssets = [];
   let cashFlowChartInst, netWorthChartInst, creditUtilChartInst, monthCashFlowChartInst, categoryChartInst, trendChartInst;
+  let txnScopeChartInst, bankBalanceChartInst, investmentValueChartInst, creditCardPageChartInst, loanChartInst;
   let currentBankSum = 0;
   let currentSurplus = 0;
   let selectedMonthKey = null; // null = "All time"; otherwise 'YYYY-MM'
@@ -1343,8 +1381,12 @@
       closeSidebar();
       // Chart.js can't size a canvas correctly while its page is display:none, so
       // re-render whenever a page holding charts becomes visible.
-      if (btn.dataset.page === 'overview' || btn.dataset.page === 'analytics') updateCharts();
+      if (btn.dataset.page === 'overview' || btn.dataset.page === 'analytics' || btn.dataset.page === 'transactions') updateCharts();
       if (btn.dataset.page === 'monthreview') updateMonthReview();
+      if (btn.dataset.page === 'bank') renderBankBalanceChart();
+      if (btn.dataset.page === 'investment') renderInvestmentValueChart();
+      if (btn.dataset.page === 'credit_card') renderCreditCardPageChart();
+      if (btn.dataset.page === 'loan') renderLoanChart();
     });
   });
 
@@ -2551,6 +2593,120 @@
 
     updateMonthReview();
     updateCharts();
+    renderBankBalanceChart();
+    renderInvestmentValueChart();
+    renderCreditCardPageChart();
+    renderLoanChart();
+  }
+
+  // Bank Accounts page — balance per account, colored credit (positive) vs debit (negative).
+  function renderBankBalanceChart() {
+    const ctx = document.getElementById('bankBalanceChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const c = themeColors();
+    const accounts = latestAssets.filter(a => a.type === 'bank');
+    if (bankBalanceChartInst) bankBalanceChartInst.destroy();
+    if (!accounts.length) return;
+    bankBalanceChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: accounts.map(a => a.name),
+        datasets: [{
+          data: accounts.map(a => a.balance || 0),
+          backgroundColor: accounts.map(a => (a.balance || 0) >= 0 ? c.credit : c.debit),
+          borderRadius: 6, borderSkipped: false
+        }]
+      },
+      options: {
+        maintainAspectRatio: false, indexAxis: 'y',
+        animation: { duration: 650, easing: 'easeOutQuart' },
+        scales: { x: { grid: { color: c.grid } }, y: { grid: { color: c.grid } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  // Investments page — current value per holding.
+  function renderInvestmentValueChart() {
+    const ctx = document.getElementById('investmentValueChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const c = themeColors();
+    const items = latestAssets.filter(a => a.type === 'investment');
+    if (investmentValueChartInst) investmentValueChartInst.destroy();
+    if (!items.length) return;
+    const palette = [c.neon, c.gold, c.credit, c.debit, c.muted, '#8E7CFF', '#4AB8CC', '#FF9F5A'];
+    investmentValueChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: items.map(a => a.name),
+        datasets: [{
+          label: 'Current value',
+          data: items.map(a => a.currentValue || 0),
+          backgroundColor: items.map((_, i) => palette[i % palette.length]),
+          borderRadius: 6, borderSkipped: false
+        }]
+      },
+      options: {
+        maintainAspectRatio: false, indexAxis: 'y',
+        animation: { duration: 650, easing: 'easeOutQuart' },
+        scales: { x: { grid: { color: c.grid } }, y: { grid: { color: c.grid } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  // Credit Cards page — outstanding vs available headroom per card (same idea as the
+  // Overview widget, but scoped to this page so it isn't chart-less on its own).
+  function renderCreditCardPageChart() {
+    const ctx = document.getElementById('creditCardPageChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const c = themeColors();
+    const cards = latestAssets.filter(a => a.type === 'credit_card');
+    if (creditCardPageChartInst) creditCardPageChartInst.destroy();
+    if (!cards.length) return;
+    creditCardPageChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: cards.map(a => a.name),
+        datasets: [
+          { label: 'Outstanding', data: cards.map(a => a.outstanding || 0), backgroundColor: c.debit, borderRadius: 6, borderSkipped: false },
+          { label: 'Available', data: cards.map(a => Math.max((a.creditLimit || 0) - (a.outstanding || 0), 0)), backgroundColor: c.credit, borderRadius: 6, borderSkipped: false }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false, indexAxis: 'y',
+        animation: { duration: 650, easing: 'easeOutQuart' },
+        scales: { x: { stacked: true, grid: { color: c.grid } }, y: { stacked: true, grid: { color: c.grid } } },
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  }
+
+  // Loans page — outstanding balance vs original sanctioned amount per loan, so how much
+  // of each loan has been paid down is visible at a glance.
+  function renderLoanChart() {
+    const ctx = document.getElementById('loanChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const c = themeColors();
+    const loans = latestAssets.filter(a => a.type === 'loan');
+    if (loanChartInst) loanChartInst.destroy();
+    if (!loans.length) return;
+    loanChartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: loans.map(a => a.name),
+        datasets: [
+          { label: 'Outstanding', data: loans.map(a => a.outstanding || 0), backgroundColor: c.debit, borderRadius: 6, borderSkipped: false },
+          { label: 'Paid off', data: loans.map(a => Math.max((a.sanctioned || 0) - (a.outstanding || 0), 0)), backgroundColor: c.credit, borderRadius: 6, borderSkipped: false }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false, indexAxis: 'y',
+        animation: { duration: 650, easing: 'easeOutQuart' },
+        scales: { x: { stacked: true, grid: { color: c.grid } }, y: { stacked: true, grid: { color: c.grid } } },
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
   }
 
   // ---- Charts ----
@@ -2689,6 +2845,25 @@
         }
       });
       animateAmount(document.getElementById('cashFlowStatValue'), income - expense);
+    }
+
+    // Same-scope doughnut for the Transactions page itself (so that page isn't chart-less)
+    const txnScopeCtx = document.getElementById('txnScopeChart');
+    if (txnScopeCtx) {
+      if (txnScopeChartInst) txnScopeChartInst.destroy();
+      txnScopeChartInst = new Chart(txnScopeCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Income', 'Transfer', 'Expense'],
+          datasets: [{ data: [income, transfer, expense], backgroundColor: [c.credit, c.gold, c.debit], borderWidth: 0, hoverOffset: 8 }]
+        },
+        options: {
+          maintainAspectRatio: false, cutout: '68%',
+          animation: { duration: 700, easing: 'easeOutQuart' },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+      animateAmount(document.getElementById('txnScopeStatValue'), income - expense);
     }
 
     // Net Worth Composition doughnut
